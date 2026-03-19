@@ -1,0 +1,10 @@
+{
+  "devDependencies": {
+    "express": "^4.22.1"
+  },
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "express-session": "^1.19.0",
+    "pg": "^8.20.0"
+  }
+}
