@@ -1,19 +1,33 @@
 require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
+const helmet = require('helmet');
+const { rateLimit } = require('express-rate-limit');
+const { doubleCsrf } = require('csrf-csrf');
 const path = require('path');
 const db = require('./db');
 
 const app = express();
 
-// ── Body parsing ──────────────────────────────────────────
+// ── 1. Helmet (security headers, must be first) ───────────
+app.use(helmet());
+
+// ── 2. Rate limiting (before routes, limits brute force) ──
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,                  // max 100 requests per window
+  message: { error: 'Too many requests, please try again later' }
+});
+app.use(limiter);
+
+// ── 3. Body parsing (before CSRF reads req.body) ─────────
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ── Static files (the frontend template) ─────────────────
+// ── 4. Static files ───────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'food blog')));
 
-// ── Session middleware (MUST come before CSRF) ────────────
+// ── 5. Session (MUST come before CSRF) ───────────────────
 app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
@@ -26,13 +40,32 @@ app.use(session({
   }
 }));
 
-// ── Routes will be added here by the team ─────────────────
+// ── 6. CSRF protection (MUST come after session) ─────────
+const { generateToken, doubleCsrfProtection } = doubleCsrf({
+  getSecret: () => process.env.SESSION_SECRET,
+  cookieName: '__Host-psifi.x-csrf-token',
+  cookieOptions: {
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: false,   // change to true once HTTPS is set up
+  },
+  size: 64,
+  ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
+});
+app.use(doubleCsrfProtection);
+
+// ── 7. CSRF token endpoint (frontend fetches this) ────────
+app.get('/csrf-token', (req, res) => {
+  res.json({ csrfToken: generateToken(req, res) });
+});
+
+// ── 8. Routes (added here by the team) ───────────────────
 // app.use('/auth', require('./routes/auth'));
 // app.use('/posts', require('./routes/posts'));
 
-// ── Global error handler (prevents stack trace leakage) ───
+// ── 9. Global error handler ───────────────────────────────
 app.use((err, req, res, next) => {
-  console.error(err.stack);   // logs full error server-side only
+  console.error(err.stack);
   res.status(500).json({ error: 'Something went wrong' });
 });
 
