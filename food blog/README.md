@@ -11,3 +11,19 @@ Posts can be edited or deleted from the "My Posts" page. Editing posts is handle
 
 ---- Loading posts -----
 Posts are loaded from a local JSON file called posts.json. Posts are loaded on three different pages: "Home", "Posts", and "My Posts".
+
+---- CSRF Implementation -----
+All non-GET fetch requests (POST, PUT, DELETE) MUST include the CSRF token in the header, otherwise the request will be rejected with a 403 error.
+
+Example of how to include it in a fetch request:
+
+const {csrfToken} = await fetch('/csrf-token').then(r => r.json());
+
+fetch('/your-route', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'x-csrf-token': csrfToken
+    },
+    body: JSON.stringify({ ... })
+});
