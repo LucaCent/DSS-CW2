@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const path = require('path');
+const https = require('https');
+const fs = require('fs');
 const db = require('./db');
 
 const app = express();
@@ -20,7 +22,7 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    secure: false,   // change to true once HTTPS is set up
+    secure: true,           // HTTPS now active — cookies only sent over TLS
     sameSite: 'strict',
     maxAge: 1000 * 60 * 60  // 1 hour
   }
@@ -36,8 +38,15 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong' });
 });
 
-// ── Start server ──────────────────────────────────────────
+// ── HTTPS server startup ──────────────────────────────────
+// Uses a self-signed cert for local dev. key.pem and cert.pem are
+// gitignored — each developer generates their own via openssl.
+const httpsOptions = {
+  key: fs.readFileSync('key.pem'),
+  cert: fs.readFileSync('cert.pem')
+};
+
 const PORT = 3000;
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+https.createServer(httpsOptions, app).listen(PORT, () => {
+  console.log(`Server running at https://localhost:${PORT}`);
 });
