@@ -1,2 +1,5 @@
 node_modules/
 .env
+key.pem
+cert.pem
+pg_hba.conf
