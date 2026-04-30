@@ -248,3 +248,22 @@ Where used: routes/passwordReset.js, utils/crypto.js (hashToken).
 GENERIC ERROR HANDLING
 Technique: A global error handler catches all unhandled errors and returns a generic "Something went wrong" message. Stack traces, SQL errors, database structure details, and other internal information are never exposed to the client. Errors are logged server-side for debugging. An unhandledRejection handler prevents the process from crashing on unhandled async errors.
 Where used: server.js (global error handler and process.on handler).
+
+
+LIBRARIES USED (QUICK REFERENCE)
+=================================
+- express
+- pg (node-postgres)
+- bcrypt
+- helmet
+- express-session
+- connect-pg-simple
+- he
+- otplib
+- qrcode
+- express-rate-limit
+- dotenv
+- winston
+- uuid
+- jest (dev dependency)
+- Node.js crypto module (built-in)
