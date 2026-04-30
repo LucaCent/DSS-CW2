@@ -82,7 +82,14 @@ app.post('/',function(req, res){
             if (err){
                 console.log(err);
             }
-        })
+        });
+    } else {
+        // Redirect back to login page
+        res.sendFile(__dirname + '/public/html/login.html', (err) => {
+            if (err){
+                console.log(err);
+            }
+        });
     }
 });
 
