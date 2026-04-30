@@ -1,52 +1,34 @@
-/**
- * SECURITY: CSRF (Cross-Site Request Forgery) Protection Middleware
- * Attack prevented: Cross-Site Request Forgery (CSRF)
+/*
+ * SECURITY: CSRF Protection
+ * Attack prevented: Cross-Site Request Forgery
  *
- * What is CSRF?
- *   CSRF is an attack where a malicious website tricks a user's browser into
- *   making an unwanted request to a different site where the user is already
- *   authenticated. For example, a hidden form on evil.com could submit a POST
- *   request to our blog to delete a post, and the browser would automatically
- *   include the user's session cookie.
+ * CSRF is when a malicious page tricks the user's browser into making a
+ * request to our app while the user is logged in — the browser sends the
+ * session cookie automatically, so the server thinks it's legitimate.
  *
- * How token validation prevents CSRF:
- *   1. Token generation: On each session (or page load), the server generates
- *      a cryptographically random, unpredictable CSRF token and stores it in
- *      the user's session.
- *   2. Token embedding: The token is included as a hidden field in every HTML
- *      form and as a header in AJAX requests.
- *   3. Token validation: On every state-changing request (POST, PUT, DELETE),
- *      the server checks that the submitted token matches the one stored in
- *      the session. A cross-origin attacker cannot read the token (due to
- *      same-origin policy), so their forged request will lack the valid token.
- *   4. Defence in depth: Combined with SameSite=Strict cookies, which prevent
- *      the browser from sending cookies with cross-site requests at all.
+ * We stop this with a random token that the attacker can't know:
+ *   - The server generates a 32-byte random token and stores it in the session.
+ *   - The frontend includes it in every POST/PUT/DELETE (as a header or
+ *     hidden form field).
+ *   - The server checks the submitted token matches the session copy.
+ *   - A cross-origin page can't read our token (same-origin policy), so
+ *     any forged request will be missing it or have the wrong value.
  *
- * Library used: None (custom implementation using Node.js crypto module).
- *   This avoids dependency on third-party CSRF libraries and gives full
- *   control over the token lifecycle.
+ * Also using SameSite=Strict on cookies as an extra layer.
+ *
+ * Custom implementation using Node crypto — no third-party CSRF library.
  */
 
 const crypto = require('crypto');
 
-/**
- * Generate a cryptographically secure CSRF token and store it in the session.
- */
 function generateCSRFToken(req) {
   const token = crypto.randomBytes(32).toString('hex');
   req.session.csrfToken = token;
   return token;
 }
 
-/**
- * Middleware: validateCSRF
- * Validates the CSRF token on every POST, PUT, and DELETE request.
- * The token can be sent as:
- *   - A hidden form field named '_csrf'
- *   - A request header named 'x-csrf-token'
- */
+// Validate token on POST/PUT/DELETE — accepts _csrf body field or x-csrf-token header
 function validateCSRF(req, res, next) {
-  // Only validate state-changing methods
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     return next();
   }
@@ -55,7 +37,6 @@ function validateCSRF(req, res, next) {
   const sessionToken = req.session ? req.session.csrfToken : null;
 
   if (!submittedToken || !sessionToken) {
-    // SECURITY: Log CSRF failure for monitoring
     const logger = require('../utils/logger');
     logger.security('CSRF token missing', {
       ip: req.ip,
@@ -66,7 +47,7 @@ function validateCSRF(req, res, next) {
     return res.status(403).json({ error: 'Invalid or missing security token. Please refresh the page and try again.' });
   }
 
-  // SECURITY: Use timing-safe comparison to prevent timing attacks on token
+  // Timing-safe compare so an attacker can't figure out the token byte-by-byte
   const tokenBuffer = Buffer.from(submittedToken, 'hex');
   const sessionBuffer = Buffer.from(sessionToken, 'hex');
 

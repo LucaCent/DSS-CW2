@@ -1,12 +1,14 @@
-/**
- * SECURITY: Database Connection Pool
- * Attack prevented: SQL injection, connection exhaustion
- * How it works: Creates a managed pool of PostgreSQL connections.
- *   All queries go through this pool using parameterised statements,
- *   never string concatenation. The pool limits concurrent connections
- *   to prevent resource exhaustion.
- * Library used: pg (node-postgres) — the standard PostgreSQL client
- *   for Node.js, supports parameterised queries natively.
+/*
+ * Database connection pool using pg (node-postgres).
+ *
+ * SECURITY: SQL Injection Prevention
+ * Attack prevented: SQL injection
+ * How it works: Every query that goes through this pool must use
+ *   parameterised statements ($1, $2, ...) instead of concatenating
+ *   user input into the SQL string. pg treats parameter values as
+ *   pure data, so they can never be interpreted as SQL commands.
+ *   The pool also caps concurrent connections at 20 to avoid
+ *   resource exhaustion if traffic spikes.
  */
 
 const { Pool } = require('pg');
@@ -27,18 +29,4 @@ pool.on('error', (err) => {
   console.error('Unexpected error on idle PostgreSQL client:', err.message);
 });
 
-/**
- * SECURITY: SQL Injection Prevention
- * Attack prevented: SQL injection
- * How it works: The query() wrapper ensures that every database interaction
- *   uses parameterised queries ($1, $2, etc.) with values passed as a
- *   separate array. PostgreSQL treats these as data, not executable SQL,
- *   making it impossible for user input to alter query structure.
- *
- * Example safe usage:
- *   pool.query('SELECT * FROM users WHERE username = $1', [username])
- *
- * Example UNSAFE (never do this):
- *   pool.query('SELECT * FROM users WHERE username = \'' + username + '\'')
- */
 module.exports = pool;

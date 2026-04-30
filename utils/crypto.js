@@ -1,21 +1,13 @@
-/**
- * SECURITY: AES-256 Encryption / Decryption Helpers
- * Attack prevented: Data breach / data leakage
- * How it works: Sensitive fields (e.g. email addresses, TOTP secrets) are
- *   encrypted at the application layer using AES-256-CBC before being
- *   written to PostgreSQL. Even if an attacker gains direct database
- *   access, the data is unreadable without the encryption key.
+/*
+ * SECURITY: Database Encryption (AES-256-CBC)
+ * Attack prevented: Data leakage if the database is compromised
+ * How it works: Personally identifiable fields (emails, TOTP secrets)
+ *   are encrypted here before being stored in Postgres. The key lives
+ *   in .env (64 hex chars = 32 bytes) and is never committed to source
+ *   control. A fresh random IV is generated per encrypt() call so the
+ *   same plaintext never produces the same ciphertext twice.
  *
- * Key management:
- *   - The encryption key is stored in the .env file as a 64-character
- *     hex string (32 bytes), NEVER hardcoded in source code.
- *   - The .env file is excluded from version control via .gitignore.
- *   - Each encryption operation generates a random 16-byte IV (initialisation
- *     vector) to ensure identical plaintexts produce different ciphertexts.
- *   - The IV is prepended to the ciphertext and stored together.
- *
- * Library used: Node.js built-in crypto module — no third-party dependency
- *   needed for standard AES-256-CBC encryption.
+ * Uses the built-in Node.js crypto module — no extra dependency needed.
  */
 
 const crypto = require('crypto');
@@ -24,10 +16,7 @@ require('dotenv').config();
 const ALGORITHM = 'aes-256-cbc';
 const KEY = Buffer.from(process.env.ENCRYPTION_KEY, 'hex'); // 32 bytes
 
-/**
- * Encrypt a plaintext string using AES-256-CBC.
- * Returns a string in the format: iv_hex:ciphertext_hex
- */
+// Encrypt plaintext -> "iv_hex:ciphertext_hex"
 function encrypt(plaintext) {
   if (!plaintext) return null;
   const iv = crypto.randomBytes(16);
@@ -37,9 +26,7 @@ function encrypt(plaintext) {
   return iv.toString('hex') + ':' + encrypted;
 }
 
-/**
- * Decrypt a ciphertext string (iv_hex:ciphertext_hex) back to plaintext.
- */
+// Decrypt "iv_hex:ciphertext_hex" -> plaintext
 function decrypt(ciphertext) {
   if (!ciphertext) return null;
   const parts = ciphertext.split(':');
@@ -51,12 +38,8 @@ function decrypt(ciphertext) {
   return decrypted;
 }
 
-/**
- * Hash a string using SHA-256. Used for password reset tokens —
- * the token is sent to the user in plaintext, but only its hash
- * is stored in the database. This way, even if the DB is compromised,
- * the raw token cannot be recovered.
- */
+// SHA-256 hash — used for password reset tokens so we only
+// store the hash in the DB, not the raw token itself.
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }

@@ -1,27 +1,19 @@
-/**
- * SECURITY: Rate Limiter Middleware
- * Attack prevented: Brute force attacks, denial of service, account enumeration
+/*
+ * SECURITY: Rate Limiting
+ * Attack prevented: Brute force, DoS, automated enumeration
  *
- * How it works:
- *   - Uses express-rate-limit to restrict the number of requests from a
- *     single IP address within a time window.
- *   - A stricter limiter is applied to authentication routes (login,
- *     register) to prevent brute-force password guessing.
- *   - A general limiter is applied globally to prevent DoS attacks.
- *   - Combined with application-level account lockout (exponential backoff
- *     after 5 failed login attempts) for defence in depth.
+ * Two limiters: a general one (100 req / 15 min per IP) applied to the
+ * whole app, and a stricter one (10 req / 15 min per IP) just for login
+ * and register. This works alongside the per-account lockout in auth.js
+ * so we're covered against both single-IP floods and distributed attacks
+ * on a single account.
  *
- * Library used: express-rate-limit (v7.x) — a well-maintained, widely used
- *   rate limiting middleware for Express.js.
+ * Library: express-rate-limit v7
  */
 
 const rateLimit = require('express-rate-limit');
 
-/**
- * SECURITY: General Rate Limiter
- * Attack prevented: Denial of service (DoS)
- * How it works: Limits each IP to 100 requests per 15-minute window.
- */
+// Global limiter — 100 requests per 15 min per IP
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100,
@@ -30,12 +22,7 @@ const generalLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-/**
- * SECURITY: Auth Route Rate Limiter (Strict)
- * Attack prevented: Brute force login attacks, credential stuffing
- * How it works: Limits each IP to 10 login/register attempts per 15-minute
- *   window. This is layered on top of per-account lockout for defence in depth.
- */
+// Stricter limiter for auth routes — 10 attempts per 15 min per IP
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10,

@@ -1,0 +1,250 @@
+LIBRARIES, TECHNIQUES & MITIGATIONS — FULL REFERENCE
+=====================================================
+Secure Blog Application (DSS Coursework)
+
+
+1. EXPRESS.JS (v4.18.2)
+-----------------------
+What it is: A minimal web framework for Node.js that handles HTTP routing, middleware, and request/response processing.
+
+Why chosen: Express is the most widely used Node.js web framework. It was specified in the coursework requirements. It provides a clean middleware pipeline which is essential for layering security measures in the correct order — for example, helmet headers must be set before any response is sent, sessions must be initialised before CSRF validation runs, and CSRF must be validated before any route handler processes a POST request. Express makes this ordering explicit and predictable.
+
+Where used: server.js — the entire application is built on Express. Every route, middleware, and static file is served through it.
+
+
+2. PG (node-postgres) (v8.11.3)
+--------------------------------
+What it is: The standard PostgreSQL client library for Node.js. Provides connection pooling and parameterised query support.
+
+Why chosen: The coursework requires PostgreSQL with raw parameterised queries and no ORM. pg is the de facto standard library for this. It natively supports parameterised queries using $1, $2 placeholder syntax, which is the primary defence against SQL injection.
+
+Mitigation: SQL INJECTION PREVENTION
+Technique: Every single database query in the application uses parameterised statements. User-supplied values are never concatenated into SQL strings. Instead, they are passed as a separate array parameter to pool.query(). PostgreSQL treats these values strictly as data, not as executable SQL, so an attacker cannot manipulate the query structure regardless of what input they provide. This applies consistently across login, registration, search, post creation, editing, and deletion.
+
+Example from the codebase:
+  pool.query('SELECT id FROM users WHERE username = $1', [username])
+  — the username value can never escape the data context and become SQL.
+
+Where used: db/pool.js (connection pool), routes/auth.js, routes/posts.js, routes/passwordReset.js (all queries).
+
+
+3. BCRYPT (v5.1.1)
+-------------------
+What it is: An adaptive password hashing library that implements the bcrypt algorithm.
+
+Why chosen: bcrypt is the industry standard for password hashing. It is deliberately slow (the cost factor is configurable), which makes brute-force attacks computationally expensive. It also handles salt generation automatically — each call to bcrypt.hash() generates a unique random salt and embeds it within the hash output, so no separate salt column is needed in the database.
+
+Mitigation: PASSWORD HASHING, SALTING & PEPPERING
+Technique: Three layers work together:
+  - Hashing (bcrypt): Converts the password into a fixed-length irreversible string using 12 rounds of the Blowfish cipher. Even if the hash is stolen from the database, the original password cannot be recovered. The 12-round cost factor means each hash takes roughly 250ms to compute, making large-scale brute force infeasible.
+  - Salting (automatic in bcrypt): A unique 16-byte random salt is generated per user and stored within the hash output. This means two users with the same password will have completely different hashes, defeating pre-computed rainbow table attacks.
+  - Peppering (application-level secret from .env): A secret string stored only in the server's environment variables (never in the database) is appended to the password before hashing. Even if an attacker obtains a full database dump, they cannot crack the hashes without also compromising the server environment to obtain the pepper.
+
+Where used: routes/auth.js (registration and login), routes/passwordReset.js (password reset).
+
+
+4. HELMET (v7.1.0)
+-------------------
+What it is: A middleware that sets various HTTP security headers on every response.
+
+Why chosen: Helmet is the standard way to set security headers in Express applications. A single app.use(helmet()) call configures multiple headers that would otherwise require manual configuration. It is actively maintained and covers all OWASP-recommended security headers.
+
+Mitigation: SECURITY HEADERS / CLICKJACKING / MIME SNIFFING / PROTOCOL DOWNGRADE
+Technique: Helmet sets the following headers on every response:
+  - Content-Security-Policy: Restricts which sources the browser will load scripts, styles, images, and other resources from. Set to 'self' only for scripts, which blocks any injected inline scripts or scripts from external domains. Also includes frame-ancestors: 'none' to prevent the page being embedded in iframes (clickjacking protection).
+  - X-Frame-Options: DENY: A legacy header (for older browsers) that also blocks iframe embedding, providing defence-in-depth alongside CSP frame-ancestors.
+  - X-Content-Type-Options: nosniff: Prevents the browser from guessing the MIME type of a response, which could allow an attacker to trick the browser into executing a file as JavaScript.
+  - Strict-Transport-Security (HSTS): Tells the browser to only communicate over HTTPS for the next year, preventing protocol downgrade attacks where an attacker intercepts HTTP traffic.
+  - Referrer-Policy: same-origin: Prevents the browser from leaking the full URL (including sensitive query parameters) to external sites via the Referer header.
+  - Permissions-Policy: Disables browser APIs (camera, microphone, geolocation) that this application does not need, reducing the attack surface.
+
+Where used: server.js — applied as the very first middleware so headers are set on all responses.
+
+
+5. EXPRESS-SESSION (v1.17.3)
+----------------------------
+What it is: Session middleware for Express that manages server-side session state using cookies.
+
+Why chosen: Required for maintaining authenticated user state across requests. express-session is the standard session library for Express and supports pluggable session stores, including PostgreSQL.
+
+Mitigation: SESSION HIJACKING PREVENTION
+Technique: The session cookie is configured with three critical security flags:
+  - HttpOnly: true — The cookie cannot be accessed by client-side JavaScript. If an attacker manages to inject a script via XSS, they still cannot read document.cookie to steal the session token.
+  - Secure: true (in production) — The cookie is only transmitted over HTTPS connections, preventing an attacker from intercepting it via network packet sniffing on unencrypted HTTP.
+  - SameSite: 'strict' — The browser will never send this cookie with requests originating from a different site. This prevents both CSRF attacks and cross-site session leakage.
+
+Additional session security measures:
+  - Session regeneration: On every successful login, req.session.regenerate() creates a brand new session ID, invalidating any previously fixated session. This prevents session fixation attacks where an attacker pre-sets a known session ID.
+  - Idle timeout (15 minutes): If no request is made for 15 minutes, the session is destroyed on the next access attempt. This limits the window of opportunity for using a stolen session.
+  - Absolute expiry (24 hours): Even actively used sessions expire after 24 hours, forcing re-authentication. This limits long-term damage from a compromised session.
+
+Where used: server.js (configuration), middleware/sessionCheck.js (timeout enforcement), routes/auth.js (regeneration on login).
+
+
+6. CONNECT-PG-SIMPLE (v9.0.1)
+------------------------------
+What it is: A PostgreSQL-backed session store for express-session.
+
+Why chosen: By default, express-session stores sessions in server memory, which means sessions are lost on restart and cannot scale. connect-pg-simple stores sessions in a PostgreSQL table, making them persistent and allowing proper server-side invalidation. This is also more secure because sessions can be audited and explicitly deleted from the database.
+
+Where used: server.js — passed as the session store configuration.
+
+
+7. HE (v1.2.0)
+---------------
+What it is: An HTML entity encoder/decoder library. It converts special characters into their HTML entity equivalents.
+
+Why chosen: he is a mature, well-tested library specifically designed for HTML encoding. It handles all edge cases including named references, numeric references, and Unicode. It was chosen over alternatives like sanitize-html because the requirement was specifically for output encoding (not HTML tag stripping), and he does this one job reliably.
+
+Mitigation: CROSS-SITE SCRIPTING (XSS) PREVENTION
+Technique: There are two types of XSS this mitigates:
+  - Stored XSS: An attacker submits a blog post containing <script>alert('xss')</script>. Without encoding, this script would execute in every visitor's browser when they view the post. With he.encode(), the < becomes &lt; and > becomes &gt;, so the browser renders it as visible text rather than executing it as HTML.
+  - Reflected XSS: An attacker crafts a URL like /search?q=<script>alert(1)</script>. If the search term is echoed back into the page without encoding, the script executes. By encoding all output through he.encode(), the reflected input is rendered as harmless text.
+
+Every piece of user-generated content (post titles, post bodies, usernames, search results) is passed through encodeHTML() before being sent to the client. This is applied server-side in the API responses, so even if the client-side code has a vulnerability, the data arriving from the server is already safe.
+
+Where used: utils/sanitise.js (encodeHTML function), routes/posts.js (all output encoding).
+
+
+8. OTPLIB (v12.0.1)
+--------------------
+What it is: A library implementing the TOTP (Time-based One-Time Password) algorithm as specified in RFC 6238.
+
+Why chosen: otplib is a well-maintained, RFC-compliant TOTP library. It handles secret generation, code generation, and verification including clock drift tolerance. It was chosen because it provides a simple API while being standards-compliant, and is compatible with all major authenticator apps (Google Authenticator, Authy, Microsoft Authenticator).
+
+Mitigation: TWO-FACTOR AUTHENTICATION (2FA)
+Technique: TOTP works by combining a shared secret with the current time to produce a 6-digit code that changes every 30 seconds:
+  1. During registration, the server generates a random base32-encoded secret using authenticator.generateSecret().
+  2. The secret is displayed to the user as a QR code (which they scan with their authenticator app) and stored encrypted (AES-256) in the database.
+  3. On login, after the password is verified, the user must also enter the current 6-digit code from their authenticator app.
+  4. The server independently computes the expected code from the stored secret and the current time, then compares it. A small tolerance window (±1 time step / ±30 seconds) accounts for clock drift.
+
+This defeats credential-only attacks: even if an attacker obtains a user's password through phishing, a data breach, or a keylogger, they cannot log in without physical access to the user's authenticator device.
+
+Where used: utils/totp.js (generate secret, generate QR, verify code), routes/auth.js (registration and login flow).
+
+
+9. QRCODE (v1.5.3)
+-------------------
+What it is: A QR code generator that produces data URL images.
+
+Why chosen: Required to display the TOTP secret as a scannable QR code during 2FA setup. qrcode is the most popular QR generation library for Node.js and can output directly as a data URL, which can be embedded in an <img> tag without needing a separate image file or endpoint.
+
+Where used: utils/totp.js — generates QR code data URL from the otpauth:// URI.
+
+
+10. EXPRESS-RATE-LIMIT (v7.1.4)
+--------------------------------
+What it is: A rate limiting middleware for Express that restricts the number of requests per IP address within a time window.
+
+Why chosen: It is the standard rate limiting solution for Express, simple to configure, and supports both global and route-specific limits.
+
+Mitigation: BRUTE FORCE / DENIAL OF SERVICE / ACCOUNT ENUMERATION PREVENTION
+Technique: Two rate limiters are applied:
+  - General limiter (100 requests per 15 minutes per IP): Applied globally to prevent denial-of-service attacks where an attacker floods the server with requests.
+  - Auth limiter (10 requests per 15 minutes per IP): Applied specifically to /auth/login and /auth/register to prevent brute-force password guessing and automated account enumeration.
+
+This is layered with application-level account lockout (5 failed attempts locks the account for 15 minutes) for defence in depth — the rate limiter stops bulk attacks from a single IP, while account lockout stops distributed attacks targeting a single account from multiple IPs.
+
+Where used: middleware/rateLimiter.js, server.js (applied to routes).
+
+
+11. DOTENV (v16.3.1)
+---------------------
+What it is: Loads environment variables from a .env file into process.env.
+
+Why chosen: Standard practice for managing secrets (database credentials, encryption keys, pepper, session secret) outside of source code. The .env file is excluded from version control via .gitignore, so secrets are never committed to the repository.
+
+Where used: server.js, db/pool.js, utils/crypto.js — any file that accesses environment variables.
+
+
+12. WINSTON (v3.11.0)
+----------------------
+What it is: A structured logging library that supports multiple output transports (file, console).
+
+Why chosen: Winston is the most widely used Node.js logging library. It supports JSON-structured logs, timestamping, and file rotation, which are essential for security auditing and incident response.
+
+Mitigation: SECURITY EVENT LOGGING
+Technique: All suspicious activity is logged to both the console and a file (logs/security.log) with timestamps and IP addresses:
+  - Failed login attempts (wrong username, wrong password, invalid TOTP code)
+  - Account lockouts after repeated failures
+  - CSRF token failures (missing or mismatched tokens)
+  - IDOR attempts (trying to edit/delete another user's post)
+  - Unhandled application errors
+
+This creates an audit trail that can be reviewed during incident response to identify attack patterns, compromised accounts, or vulnerability exploitation attempts.
+
+Where used: utils/logger.js, routes/auth.js, routes/posts.js, middleware/csrfMiddleware.js, server.js.
+
+
+13. NODE.JS BUILT-IN: CRYPTO MODULE
+------------------------------------
+What it is: Node.js's built-in cryptography module providing encryption, hashing, and random number generation.
+
+Why chosen: No third-party dependency needed for standard cryptographic operations. The crypto module is well-audited, maintained by the Node.js team, and supports all required algorithms.
+
+Mitigations it supports:
+
+  a) DATABASE ENCRYPTION (AES-256-CBC)
+  Technique: Sensitive fields (email addresses, TOTP secrets) are encrypted at the application layer before being written to PostgreSQL. Each encryption generates a random 16-byte initialisation vector (IV) so that identical plaintexts produce different ciphertexts. The encryption key is a 32-byte value stored in the .env file. Even if an attacker gains direct database access via SQL injection or a database backup leak, the encrypted fields are unreadable without the key.
+  Where used: utils/crypto.js
+
+  b) CSRF TOKEN GENERATION
+  Technique: crypto.randomBytes(32) generates 32 bytes of cryptographically secure random data for each CSRF token. This ensures tokens are unpredictable — an attacker cannot guess the token value. crypto.timingSafeEqual() is used for token comparison to prevent timing attacks where an attacker could determine how many bytes of their guessed token matched the real one.
+  Where used: middleware/csrfMiddleware.js
+
+  c) PASSWORD RESET TOKEN HASHING
+  Technique: Reset tokens are generated with crypto.randomBytes(32) and only their SHA-256 hash is stored in the database. The plaintext token is sent to the user. When the user submits the token, the server hashes it and compares against the stored hash. If the database is compromised, the attacker sees only hashes and cannot use them to reset passwords.
+  Where used: utils/crypto.js (hashToken), routes/passwordReset.js
+
+
+14. JEST (v29.7.0) — DEV DEPENDENCY
+-------------------------------------
+What it is: A JavaScript testing framework.
+
+Why chosen: Jest is the most popular testing framework for Node.js. It provides a simple API, built-in assertions, and clear test output. It was used to write unit tests verifying that each security mechanism works correctly in isolation.
+
+Tests written:
+  - Password hashing: Verifies bcrypt hash/verify cycle, pepper requirement, unique salts
+  - CSRF tokens: Verifies generation, uniqueness, validation, rejection of invalid tokens
+  - Input sanitisation: Verifies HTML encoding of <, >, &, ", ' and length validation
+  - TOTP verification: Verifies code generation, validation, and rejection of invalid codes
+  - Session expiry: Verifies idle timeout and absolute expiry logic
+
+Where used: tests/unit/ (5 test files, 51 tests total).
+
+
+15. UUID (v9.0.0)
+------------------
+What it is: A library for generating RFC-compliant universally unique identifiers.
+
+Why chosen: Available as a utility for generating unique identifiers where needed. Included as a dependency for any future use in token generation or resource identification.
+
+Where used: Available as a project dependency.
+
+
+ADDITIONAL TECHNIQUES (NO EXTERNAL LIBRARY)
+============================================
+
+ACCOUNT ENUMERATION PREVENTION
+Technique: Three measures work together:
+  1. Generic error messages — both "user not found" and "wrong password" return the identical message "Invalid credentials". An attacker cannot determine whether a username exists.
+  2. Artificial timing delay — a 200ms minimum delay is enforced on all login responses. Without this, a "user not found" response would return faster (no bcrypt comparison needed) than a "wrong password" response, leaking information through timing.
+  3. Dummy bcrypt hash — when a username is not found, a dummy bcrypt.hash() call is performed anyway to further equalise the processing time.
+Where used: routes/auth.js (login route).
+
+IDOR (INSECURE DIRECT OBJECT REFERENCE) PREVENTION
+Technique: Before any edit or delete operation on a post, the server queries the database to check that the post's user_id matches the authenticated user's session userId. If they do not match, the request is rejected with a 403 error and the attempt is logged. This prevents an attacker from modifying another user's post by simply changing the post ID in the URL or request body.
+Where used: routes/posts.js (PUT and DELETE routes).
+
+INPUT LENGTH LIMITS
+Technique: Server-side validation enforces maximum lengths on all fields: username (50), password (128), email (254), post title (200), post content (5000), search query (200), TOTP code (exactly 6). Even if client-side validation is bypassed (which is trivial), the server rejects oversized input before it reaches the database. Request body size is also limited to 10KB at the Express parser level.
+Where used: utils/sanitise.js, server.js (body parser limit).
+
+SECURE PASSWORD RESET
+Technique: A cryptographically random token is generated, only its SHA-256 hash is stored in the database, and it expires after 15 minutes. Existing unused tokens are invalidated when a new one is requested. The token is marked as used after a single successful reset. This prevents token reuse, database-leak-based attacks, and time-based brute force.
+Where used: routes/passwordReset.js, utils/crypto.js (hashToken).
+
+GENERIC ERROR HANDLING
+Technique: A global error handler catches all unhandled errors and returns a generic "Something went wrong" message. Stack traces, SQL errors, database structure details, and other internal information are never exposed to the client. Errors are logged server-side for debugging. An unhandledRejection handler prevents the process from crashing on unhandled async errors.
+Where used: server.js (global error handler and process.on handler).

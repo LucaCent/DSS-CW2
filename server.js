@@ -1,11 +1,7 @@
-/**
- * ============================================================
- * SECURE BLOG APPLICATION — Entry Point (server.js)
- * ============================================================
- * This file wires together all middleware, routes, and security
- * mitigations. Each middleware layer is applied in a specific
- * order to ensure correct functionality.
- * ============================================================
+/*
+ * Entry point — wires middleware, routes, and security layers.
+ * Order matters here: helmet first, then parsing, then sessions,
+ * then CSRF, then the actual routes.
  */
 
 require('dotenv').config();
@@ -21,31 +17,21 @@ const logger = require('./utils/logger');
 
 const app = express();
 
-// ── 1. Security Headers (helmet.js — must be first) ──────────
-
-/**
- * SECURITY: HTTP Security Headers via helmet.js
- * Attack prevented: Clickjacking, MIME sniffing, protocol downgrade,
- *   information leakage, XSS
+/*
+ * SECURITY: HTTP Security Headers (helmet.js)
+ * Attack prevented: Clickjacking, MIME sniffing, protocol downgrade, XSS
  *
- * How it works:
- *   - X-Frame-Options: DENY — prevents the page from being loaded in
- *     an iframe, defeating clickjacking attacks where an attacker overlays
- *     our page with a transparent iframe to trick users into clicking.
- *   - X-Content-Type-Options: nosniff — prevents the browser from MIME
- *     type sniffing, which could allow an attacker to execute a script
- *     disguised as a different content type.
- *   - Strict-Transport-Security — tells the browser to always use HTTPS,
- *     preventing protocol downgrade attacks and cookie hijacking.
- *   - Referrer-Policy: same-origin — prevents the browser from sending
- *     the full URL in the Referer header to external sites, protecting
- *     sensitive URL parameters from leaking.
- *   - Permissions-Policy — disables browser features (camera, microphone,
- *     geolocation) that this application does not need, reducing the
- *     attack surface.
+ * helmet sets a bunch of headers in one go:
+ *   - X-Frame-Options: DENY — stops the page being loaded in an iframe
+ *     (clickjacking). CSP frame-ancestors: 'none' does the same thing
+ *     for modern browsers; both are set for compatibility.
+ *   - X-Content-Type-Options: nosniff — stops browsers guessing MIME types
+ *   - HSTS — forces HTTPS for a year, prevents protocol downgrades
+ *   - Referrer-Policy: same-origin — doesn't leak URLs to other sites
+ *   - Permissions-Policy — turns off camera/mic/geo since we don't need them
+ *   - CSP: scripts only from 'self', so injected inline scripts are blocked
  *
- * Library used: helmet (v7.x) — the standard security header middleware
- *   for Express.js. Sets all recommended headers with one call.
+ * Library: helmet v7
  */
 app.use(helmet({
   contentSecurityPolicy: {
@@ -58,14 +44,6 @@ app.use(helmet({
       fontSrc: ["'self'"],
       objectSrc: ["'none'"],
       mediaSrc: ["'none'"],
-      /**
-       * SECURITY: Clickjacking Protection via CSP frame-ancestors
-       * Attack prevented: Clickjacking
-       * How it works: The frame-ancestors 'none' directive tells browsers
-       *   not to allow this page to be embedded in any frame, iframe, or
-       *   object. This is the modern replacement for X-Frame-Options and
-       *   is used alongside it for defence in depth.
-       */
       frameAncestors: ["'none'"],
     },
   },
@@ -81,39 +59,28 @@ app.use(helmet({
   },
 }));
 
-// ── 2. General Rate Limiting ──────────────────────────────────
+// General Rate Limiting
 app.use(generalLimiter);
 
-// ── 3. Body Parsing (before CSRF and routes) ──────────────────
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
-// ── 4. Static Files ──────────────────────────────────────────
+// Static Files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ── 5. Session Configuration ──────────────────────────────────
-
-/**
- * SECURITY: Session Hijacking Prevention — Cookie Configuration
- * Attack prevented: Session hijacking, session fixation, CSRF
+/*
+ * SECURITY: Session Cookie Configuration
+ * Attack prevented: Session hijacking, session fixation
  *
- * How each flag prevents session hijacking:
- *   - HttpOnly: true — The session cookie cannot be accessed via
- *     client-side JavaScript (document.cookie). This prevents XSS
- *     attacks from stealing the session token.
- *   - Secure: false (set to true in production with HTTPS) — When true,
- *     the cookie is only sent over encrypted HTTPS connections, preventing
- *     an attacker from intercepting it via packet sniffing on the network.
- *   - SameSite: 'strict' — The browser will NOT send this cookie with
- *     any cross-site requests. This prevents CSRF attacks because a
- *     malicious site cannot trigger authenticated requests to our app.
- *     It also mitigates session hijacking via cross-site request tricks.
- *   - maxAge: 24 hours — Absolute session lifetime. Even if a session
- *     token is stolen, it becomes useless after 24 hours.
+ * Cookie flags that matter:
+ *   HttpOnly  — JS can't read the cookie, so XSS can't steal it
+ *   Secure    — cookie only sent over HTTPS (disabled for localhost)
+ *   SameSite  — 'strict' means the browser won't attach it to cross-site
+ *               requests, which blocks CSRF and cross-origin session leaks
+ *   maxAge    — 24h hard limit; stolen tokens expire after a day
  *
- * Session store: connect-pg-simple stores sessions in PostgreSQL,
- *   not in server memory. This ensures sessions survive server restarts
- *   and can be properly invalidated.
+ * Sessions are stored in Postgres (connect-pg-simple) instead of memory
+ * so they survive restarts and can be properly invalidated.
  */
 app.use(session({
   store: new PgSession({
@@ -133,33 +100,21 @@ app.use(session({
   },
 }));
 
-// ── 6. CSRF Protection (after session, before routes) ─────────
 app.use(validateCSRF);
-
-// ── 7. Auth Rate Limiter (stricter, only on auth routes) ──────
 app.use('/auth/login', authLimiter);
 app.use('/auth/register', authLimiter);
 
-// ── 8. Routes ─────────────────────────────────────────────────
+// Routes
 app.use('/auth', require('./routes/auth'));
 app.use('/posts', require('./routes/posts'));
 app.use('/password-reset', require('./routes/passwordReset'));
 
-// ── 9. SPA fallback — serve index.html for unmatched routes ───
+// SPA fallback
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// ── 10. Global Error Handler ──────────────────────────────────
-
-/**
- * SECURITY: Generic Error Responses
- * Attack prevented: Information leakage
- * How it works: The global error handler catches all unhandled errors
- *   and returns a generic message. Stack traces, SQL errors, and other
- *   internal details are NEVER sent to the client — they are only
- *   logged server-side for debugging.
- */
+// SECURITY: Generic errors only — never leak stack traces or DB details to the client
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err.message);
   logger.security('Unhandled application error', {
@@ -171,20 +126,13 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong. Please try again later.' });
 });
 
-// ── 11. Unhandled Promise Rejection Handler ───────────────────
-
-/**
- * SECURITY: Graceful crash prevention
- * Attack prevented: Denial of service via unhandled rejections
- * How it works: Catches unhandled promise rejections to prevent the
- *   Node.js process from crashing, which would cause a denial of service.
- */
+// Catch unhandled async errors so the process doesn't crash
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection:', reason);
   logger.security('Unhandled promise rejection', { reason: String(reason) });
 });
 
-// ── Start Server ──────────────────────────────────────────────
+// Start Server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Secure Blog server running at http://localhost:${PORT}`);

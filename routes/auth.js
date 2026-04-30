@@ -1,15 +1,7 @@
-/**
- * SECURITY: Authentication Routes (Register, Login, Logout, 2FA)
- * This file implements all authentication-related endpoints with the
- * following security mitigations applied throughout:
- *   - Account enumeration prevention
- *   - Password hashing with salt and pepper
- *   - TOTP-based two-factor authentication
- *   - Session hijacking prevention
- *   - SQL injection prevention via parameterised queries
- *   - Input validation and sanitisation
- *   - Rate limiting
- *   - CSRF protection
+/*
+ * Authentication routes — register, login, logout, 2FA setup.
+ * Parameterised queries throughout, input validated before anything
+ * hits the database, and passwords are hashed with bcrypt + pepper.
  */
 
 const express = require('express');
@@ -27,45 +19,31 @@ const BCRYPT_ROUNDS = 12;
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
-/**
- * SECURITY: Password Hashing, Salting, and Peppering
- * Attack prevented: Password exposure from database breaches
+/*
+ * SECURITY: Password Hashing, Salting & Peppering
+ * Attack prevented: Password exposure from a database breach
  *
- * What each component does and why all three together are stronger:
+ * Three layers protect stored passwords:
  *
- * 1. HASHING (bcrypt):
- *    A one-way cryptographic function that converts the password into a
- *    fixed-length string. Even if the hash is stolen, the original password
- *    cannot be recovered. bcrypt is deliberately slow (configurable via
- *    rounds) to make brute-force attacks computationally expensive.
+ * Hashing (bcrypt, 12 rounds) — one-way function, so even with the hash
+ * you can't get the password back. bcrypt is intentionally slow which
+ * makes brute-forcing expensive.
  *
- * 2. SALTING (automatic in bcrypt):
- *    A unique random string generated for each user and prepended to their
- *    password before hashing. bcrypt generates and stores the salt
- *    automatically within the hash output. This defeats pre-computed
- *    rainbow table attacks because identical passwords produce different
- *    hashes for different users.
+ * Salting (built into bcrypt) — each hash gets a unique random salt,
+ * so two users with the same password end up with different hashes.
+ * This kills rainbow-table attacks.
  *
- * 3. PEPPERING (server-side secret from .env):
- *    A secret string stored in an environment variable (not in the database)
- *    that is appended to every password before hashing. Even if an attacker
- *    dumps the entire database, they cannot crack the hashes without also
- *    obtaining the pepper from the server's environment. This adds a layer
- *    of defence that is independent of the database.
+ * Peppering (secret from .env) — a server-side string appended to every
+ * password before hashing. It's not stored in the DB, so even a full
+ * database dump isn't enough to crack anything without the pepper too.
  *
- * Together: Salt defeats rainbow tables, pepper defeats database-only
- * breaches, and bcrypt's slowness defeats brute force. An attacker would
- * need the database dump AND the server's environment AND enormous
- * computational resources to crack even a single password.
+ * All three together means an attacker needs the DB dump + the server
+ * environment + a lot of compute time to crack even one password.
  *
- * Library used: bcrypt (v5.x) — the industry-standard adaptive hashing
- *   library for Node.js. Chosen for its security, maturity, and built-in
- *   salt generation.
+ * Library: bcrypt v5 — industry standard, handles salt automatically.
  */
 
-/**
- * Apply pepper to a password before hashing.
- */
+// Append the server-side pepper before hashing
 function applyPepper(password) {
   return password + process.env.PEPPER;
 }
@@ -77,8 +55,7 @@ router.post('/register', async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    // SECURITY: Input validation (server-side)
-    // Attack prevented: SQL injection, XSS, buffer overflow
+    // Validate everything server-side before touching the DB
     const usernameCheck = validateUsername(username);
     if (!usernameCheck.valid) return res.status(400).json({ error: usernameCheck.message });
 
@@ -88,9 +65,6 @@ router.post('/register', async (req, res) => {
     const passwordCheck = validatePassword(password);
     if (!passwordCheck.valid) return res.status(400).json({ error: passwordCheck.message });
 
-    // SECURITY: SQL Injection Prevention
-    // Attack prevented: SQL injection
-    // How it works: Parameterised query — $1 is treated as data, never as SQL
     const existingUser = await pool.query(
       'SELECT id FROM users WHERE username = $1',
       [username]
@@ -100,20 +74,15 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Username is already taken' });
     }
 
-    // SECURITY: Password hashing with pepper + bcrypt (includes salt)
     const pepperedPassword = applyPepper(password);
     const passwordHash = await bcrypt.hash(pepperedPassword, BCRYPT_ROUNDS);
 
-    // SECURITY: Database Encryption
-    // Attack prevented: Data breach exposure of PII
-    // How it works: Email is encrypted with AES-256 before storage
+    // Encrypt PII before it goes into the database
     const encryptedEmail = encrypt(email);
 
-    // SECURITY: TOTP 2FA secret generation
     const totpSecret = generateTOTPSecret();
     const encryptedTotpSecret = encrypt(totpSecret);
 
-    // SECURITY: SQL Injection Prevention — parameterised INSERT
     const result = await pool.query(
       `INSERT INTO users (username, email_encrypted, password_hash, totp_secret_encrypted, totp_enabled)
        VALUES ($1, $2, $3, $4, $5)
@@ -185,40 +154,28 @@ router.post('/enable-2fa', async (req, res) => {
 // POST /auth/login
 // ─────────────────────────────────────────────────────────────
 
-/**
+/*
  * SECURITY: Account Enumeration Prevention
- * Attack prevented: Account enumeration (username harvesting)
+ * Attack prevented: Username harvesting / account enumeration
  *
- * What is account enumeration?
- *   Account enumeration is an attack where an adversary systematically
- *   tests usernames or email addresses against a login or registration
- *   form to determine which accounts exist. Differences in error messages
- *   (e.g. "username not found" vs "wrong password") or response times
- *   reveal whether an account exists.
+ * Account enumeration is when an attacker tries different usernames to
+ * figure out which ones exist. They can do this by looking at the error
+ * message ("user not found" vs "wrong password") or by timing the
+ * response (a missing user returns faster since there's no hash to check).
  *
- * How this code prevents it:
- *   1. Identical error messages: Whether the username does not exist or
- *      the password is wrong, the same generic message is returned:
- *      "Invalid credentials". The attacker cannot distinguish the two cases.
- *   2. Consistent artificial delay: A 200ms delay is added to ALL login
- *      responses (success and failure). This prevents timing-based
- *      enumeration — without the delay, a "user not found" response
- *      would be faster (no bcrypt comparison) than a "wrong password"
- *      response, leaking information.
- *   3. Rate limiting + account lockout: After 5 failed login attempts,
- *      the account is locked for 15 minutes (exponential backoff).
- *      Combined with IP-based rate limiting, this makes brute-force
- *      enumeration infeasible.
+ * We prevent it three ways:
+ * 1. Same "Invalid credentials" message regardless of what went wrong.
+ * 2. A 200ms floor on all responses so timing is consistent. When the
+ *    user doesn't exist we also run a dummy bcrypt hash to fill the gap.
+ * 3. Account lockout after 5 failed attempts + IP rate limiting.
  */
 router.post('/login', async (req, res) => {
-  // SECURITY: Artificial delay to prevent timing-based enumeration
   const ARTIFICIAL_DELAY_MS = 200;
   const start = Date.now();
 
   try {
     const { username, password, totpCode } = req.body;
 
-    // Basic input validation
     if (!username || !password) {
       await artificialDelay(start, ARTIFICIAL_DELAY_MS);
       return res.status(400).json({ error: 'Username and password are required' });
@@ -230,15 +187,13 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // SECURITY: SQL Injection Prevention — parameterised query
     const result = await pool.query(
       'SELECT id, username, password_hash, totp_enabled, totp_secret_encrypted, failed_login_attempts, locked_until FROM users WHERE username = $1',
       [username]
     );
 
-    // SECURITY: Account enumeration — same error for "user not found"
     if (result.rows.length === 0) {
-      // Perform a dummy bcrypt hash to equalise timing
+      // Dummy hash so the response takes the same time as a real check
       await bcrypt.hash('dummy_password', BCRYPT_ROUNDS);
       await artificialDelay(start, ARTIFICIAL_DELAY_MS);
       logger.security('Failed login - user not found', { username, ip: req.ip });
@@ -247,25 +202,21 @@ router.post('/login', async (req, res) => {
 
     const user = result.rows[0];
 
-    // SECURITY: Account lockout after repeated failures
-    // Attack prevented: Brute force password guessing
+    // Account locked? Don't even check the password.
     if (user.locked_until && new Date(user.locked_until) > new Date()) {
       await artificialDelay(start, ARTIFICIAL_DELAY_MS);
       logger.security('Login attempt on locked account', { username, ip: req.ip });
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // SECURITY: Password verification with pepper
     const pepperedPassword = applyPepper(password);
     const passwordValid = await bcrypt.compare(pepperedPassword, user.password_hash);
 
     if (!passwordValid) {
-      // Increment failed attempts
       const newAttempts = (user.failed_login_attempts || 0) + 1;
       let lockUntil = null;
 
       if (newAttempts >= MAX_FAILED_ATTEMPTS) {
-        // SECURITY: Exponential backoff — lock account for 15 minutes
         lockUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
         logger.security('Account locked after repeated failures', {
           username, ip: req.ip, attempts: newAttempts,
@@ -282,10 +233,8 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    // Password correct — check if 2FA is enabled
     if (user.totp_enabled) {
       if (!totpCode) {
-        // Need 2FA code — return special status to prompt frontend
         await artificialDelay(start, ARTIFICIAL_DELAY_MS);
         return res.status(200).json({ requires2FA: true, message: 'Please enter your 2FA code' });
       }
@@ -304,18 +253,13 @@ router.post('/login', async (req, res) => {
       }
     }
 
-    // ── Login successful ──
-    // Reset failed attempts
+    // Login OK — reset failed attempts and regenerate session
     await pool.query(
       'UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1',
       [user.id]
     );
 
-    // SECURITY: Session Hijacking Prevention — regenerate session ID
-    // Attack prevented: Session fixation
-    // How it works: Destroying the old session and creating a new one
-    //   ensures that any pre-existing session ID (potentially set by an
-    //   attacker) is invalidated.
+    // Regenerate session ID to prevent session fixation
     req.session.regenerate((err) => {
       if (err) {
         console.error('Session regeneration error:', err.message);
@@ -327,7 +271,6 @@ router.post('/login', async (req, res) => {
       req.session.createdAt = Date.now();
       req.session.lastActivity = Date.now();
 
-      // Generate fresh CSRF token for new session
       const csrfToken = generateCSRFToken(req);
 
       logger.info('Successful login', { username, ip: req.ip });
@@ -345,9 +288,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-/**
- * Helper: ensure consistent response timing.
- */
+// Pad response time to at least minDelay ms from start
 async function artificialDelay(startTime, minDelay) {
   const elapsed = Date.now() - startTime;
   const remaining = minDelay - elapsed;

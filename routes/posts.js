@@ -1,9 +1,7 @@
-/**
- * SECURITY: Blog Post Routes (CRUD + Search)
- * All routes use parameterised queries for SQL injection prevention,
- * input validation and sanitisation for XSS prevention, session
- * authentication for access control, and IDOR prevention by verifying
- * resource ownership.
+/*
+ * Blog post routes — public listing, search, and authenticated CRUD.
+ * Every query is parameterised, all output is HTML-encoded, and
+ * edit/delete check ownership so users can only touch their own posts.
  */
 
 const express = require('express');
@@ -17,13 +15,6 @@ const logger = require('../utils/logger');
 // GET /posts — Public post listing (no auth required)
 // ─────────────────────────────────────────────────────────────
 
-/**
- * SECURITY: SQL Injection Prevention
- * Attack prevented: SQL injection via query parameters
- * How it works: All database queries use parameterised statements ($1, $2).
- *   User-supplied values (search terms, IDs) are passed as parameters,
- *   never concatenated into the SQL string.
- */
 router.get('/', async (req, res) => {
   try {
     const result = await pool.query(
@@ -33,7 +24,7 @@ router.get('/', async (req, res) => {
        ORDER BY p.created_at DESC`
     );
 
-    // SECURITY: XSS Prevention — encode output before sending to client
+    // HTML-encode everything before it leaves the server
     const posts = result.rows.map((post) => ({
       id: post.id,
       title: encodeHTML(post.title),
@@ -64,8 +55,7 @@ router.get('/search', async (req, res) => {
     const queryCheck = validateLength('searchQuery', q);
     if (!queryCheck.valid) return res.status(400).json({ error: queryCheck.message });
 
-    // SECURITY: SQL Injection Prevention — parameterised ILIKE query
-    // The % wildcards are part of the parameter value, not the SQL string
+    // Wildcards go inside the parameter, not in the SQL string itself
     const searchTerm = `%${q}%`;
     const result = await pool.query(
       `SELECT p.id, p.title, p.content, p.created_at, p.updated_at, u.username
@@ -76,7 +66,6 @@ router.get('/search', async (req, res) => {
       [searchTerm]
     );
 
-    // SECURITY: XSS Prevention — encode output
     const posts = result.rows.map((post) => ({
       id: post.id,
       title: encodeHTML(post.title),
@@ -138,15 +127,12 @@ router.post('/', requireAuth, async (req, res) => {
   try {
     const { title, content } = req.body;
 
-    // SECURITY: Input validation (server-side length limits)
-    // Attack prevented: Buffer overflow, DoS, database overflow
     const titleCheck = validateLength('postTitle', title);
     if (!titleCheck.valid) return res.status(400).json({ error: titleCheck.message });
 
     const contentCheck = validateLength('postContent', content);
     if (!contentCheck.valid) return res.status(400).json({ error: contentCheck.message });
 
-    // SECURITY: SQL Injection Prevention — parameterised INSERT
     const result = await pool.query(
       `INSERT INTO posts (user_id, title, content)
        VALUES ($1, $2, $3)
@@ -176,13 +162,12 @@ router.post('/', requireAuth, async (req, res) => {
 // PUT /posts/:id — Edit a post (auth required, own posts only)
 // ─────────────────────────────────────────────────────────────
 
-/**
- * SECURITY: Insecure Direct Object Reference (IDOR) Prevention
- * Attack prevented: IDOR — unauthorised access to another user's resources
- * How it works: Before allowing an edit or delete, the server verifies
- *   that the authenticated user (from the session) is the owner of the
- *   post (user_id matches). This prevents an attacker from modifying
- *   another user's post by simply changing the post ID in the request.
+/*
+ * SECURITY: IDOR Prevention
+ * Attack prevented: Insecure Direct Object Reference
+ * Before any edit or delete we check that the logged-in user actually
+ * owns the post. Without this, someone could just change the ID in the
+ * URL and mess with another user's content.
  */
 router.put('/:id', requireAuth, async (req, res) => {
   try {
@@ -199,7 +184,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     const contentCheck = validateLength('postContent', content);
     if (!contentCheck.valid) return res.status(400).json({ error: contentCheck.message });
 
-    // SECURITY: IDOR Prevention — verify ownership before update
+    // Make sure this post belongs to the logged-in user
     const existing = await pool.query(
       'SELECT user_id FROM posts WHERE id = $1',
       [postId]
@@ -219,7 +204,6 @@ router.put('/:id', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'You do not have permission to edit this post' });
     }
 
-    // SECURITY: SQL Injection Prevention — parameterised UPDATE
     const result = await pool.query(
       `UPDATE posts SET title = $1, content = $2, updated_at = CURRENT_TIMESTAMP
        WHERE id = $3
@@ -255,7 +239,6 @@ router.delete('/:id', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid post ID' });
     }
 
-    // SECURITY: IDOR Prevention — verify ownership before delete
     const existing = await pool.query(
       'SELECT user_id FROM posts WHERE id = $1',
       [postId]
@@ -275,7 +258,6 @@ router.delete('/:id', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'You do not have permission to delete this post' });
     }
 
-    // SECURITY: SQL Injection Prevention — parameterised DELETE
     await pool.query('DELETE FROM posts WHERE id = $1', [postId]);
 
     logger.info('Post deleted', { userId: req.session.userId, postId });

@@ -1,14 +1,11 @@
-/**
- * SECURITY: Server-Side Security Logger
- * Attack prevented: Undetected intrusion, forensic blindness
- * How it works: Logs suspicious activity (repeated failed logins, CSRF
- *   failures, unexpected input patterns) to both a file and the console
- *   with timestamps and IP addresses. This creates an audit trail for
- *   incident response and forensic analysis.
+/*
+ * SECURITY: Security Event Logging
+ * Attack prevented: Undetected intrusions / lack of audit trail
+ * How it works: Suspicious events (failed logins, CSRF failures, IDOR
+ *   attempts) are written to logs/security.log with a timestamp and the
+ *   source IP. If something goes wrong we have a paper trail to look at.
  *
- * Library used: winston (v3.x) — the most widely used logging library
- *   for Node.js, supporting multiple transports (file, console) and
- *   structured log formatting.
+ * Uses winston (v3) for file + console logging with rotation.
  */
 
 const winston = require('winston');
@@ -33,18 +30,10 @@ const logger = winston.createLogger({
   ],
 });
 
-/**
- * Log a security-related event.
- * @param {string} message - Description of the event
- * @param {Object} meta - Additional context (ip, username, etc.)
- */
 function security(message, meta = {}) {
   logger.warn(`[SECURITY] ${message}`, meta);
 }
 
-/**
- * Log a general info event.
- */
 function info(message, meta = {}) {
   logger.info(message, meta);
 }

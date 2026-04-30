@@ -1,47 +1,34 @@
-/**
- * SECURITY: Input Sanitisation and Output Encoding
- * Attack prevented: Cross-Site Scripting (XSS) — both stored and reflected
+/*
+ * SECURITY: XSS Prevention — Input Sanitisation + Output Encoding
+ * Attack prevented: Stored and Reflected Cross-Site Scripting (XSS)
  *
- * Stored XSS: An attacker injects malicious script into data that is saved
- *   in the database (e.g. a blog post body). When other users view that
- *   content, the script executes in their browser, potentially stealing
- *   cookies or session tokens.
+ * Stored XSS happens when an attacker saves malicious script (e.g. in a
+ * blog post) and it runs in other users' browsers when they view the page.
+ * Reflected XSS is similar but the script comes from a URL parameter
+ * (like a search query) that gets echoed straight back into the HTML.
  *
- * Reflected XSS: An attacker crafts a URL containing malicious script in
- *   a query parameter (e.g. a search term). If the server reflects that
- *   input back into the page without encoding, the script executes in
- *   the victim's browser when they click the link.
+ * Both are stopped the same way here: every string that came from a user
+ * gets run through he.encode() before it goes anywhere near the page.
+ * That turns < into &lt;, > into &gt;, quotes into &quot; etc., so the
+ * browser just displays the text instead of executing it.
  *
- * How this module prevents XSS:
- *   1. HTML encoding: All user-supplied input is passed through the `he`
- *      library's encode() function before being rendered in any page.
- *      This converts characters like <, >, &, ", ' into their HTML
- *      entity equivalents (&lt;, &gt;, &amp;, etc.), making them inert.
- *   2. Input validation: Fields are validated for type, length, and format
- *      before processing, rejecting obviously malicious input early.
+ * On top of that, all inputs are validated for type and length on the
+ * server side so obviously bad data gets rejected early.
  *
- * Library used: he (v1.2.0) — a robust, well-tested HTML entity encoder/
- *   decoder. Chosen because it handles all edge cases and is widely used.
+ * Library: he (v1.2.0) — handles HTML entity encoding reliably.
  */
 
 const he = require('he');
 
-/**
- * HTML-encode a string to prevent XSS when rendered in a page.
- * Converts <, >, &, ", ' and other special characters to HTML entities.
- */
+// Encode special chars so user content can't break out of the HTML context
 function encodeHTML(input) {
   if (typeof input !== 'string') return '';
   return he.encode(input, { useNamedReferences: true });
 }
 
-/**
- * SECURITY: Input Length Limits
- * Attack prevented: Buffer overflow, denial of service, database overflow
- * How it works: Enforces maximum length on all user-supplied fields
- *   server-side. Even if client-side validation is bypassed, the server
- *   rejects oversized input.
- */
+// SECURITY: Input Length Limits
+// Attack prevented: DoS via oversized payloads, DB column overflow
+// Server-side check — client validation can always be bypassed
 const INPUT_LIMITS = {
   username: { min: 3, max: 50 },
   password: { min: 8, max: 128 },
@@ -52,10 +39,7 @@ const INPUT_LIMITS = {
   totpCode: { exact: 6 },
 };
 
-/**
- * Validate a field's length against defined limits.
- * Returns { valid: boolean, message: string }
- */
+// Check a value against the min/max/exact rules for its field
 function validateLength(field, value) {
   const limits = INPUT_LIMITS[field];
   if (!limits) return { valid: true, message: '' };
@@ -79,9 +63,7 @@ function validateLength(field, value) {
   return { valid: true, message: '' };
 }
 
-/**
- * Validate username format: alphanumeric and underscores only.
- */
+// Username: letters, digits, underscores only
 function validateUsername(username) {
   const lengthCheck = validateLength('username', username);
   if (!lengthCheck.valid) return lengthCheck;
@@ -92,9 +74,7 @@ function validateUsername(username) {
   return { valid: true, message: '' };
 }
 
-/**
- * Validate email format (basic check).
- */
+// Basic email format check
 function validateEmail(email) {
   const lengthCheck = validateLength('email', email);
   if (!lengthCheck.valid) return lengthCheck;
@@ -105,9 +85,7 @@ function validateEmail(email) {
   return { valid: true, message: '' };
 }
 
-/**
- * Validate password strength.
- */
+// Password strength rules
 function validatePassword(password) {
   const lengthCheck = validateLength('password', password);
   if (!lengthCheck.valid) return lengthCheck;
