@@ -1,29 +1,13 @@
-/*
- * SECURITY: XSS Prevention — Input Sanitisation + Output Encoding
- * Attack prevented: Stored and Reflected Cross-Site Scripting (XSS)
- *
- * Stored XSS happens when an attacker saves malicious script (e.g. in a
- * blog post) and it runs in other users' browsers when they view the page.
- * Reflected XSS is similar but the script comes from a URL parameter
- * (like a search query) that gets echoed straight back into the HTML.
- *
- * Both are stopped the same way here: every string that came from a user
- * gets run through he.encode() before it goes anywhere near the page.
- * That turns < into &lt;, > into &gt;, quotes into &quot; etc., so the
- * browser just displays the text instead of executing it.
- *
- * On top of that, all inputs are validated for type and length on the
- * server side so obviously bad data gets rejected early.
- *
- * Library: he (v1.2.0) — handles HTML entity encoding reliably.
- */
+//encodes input to make script inert
+function encodeHTML(input){
+  if (typeof input != 'string') return '';
 
-const he = require('he');
-
-// Encode special chars so user content can't break out of the HTML context
-function encodeHTML(input) {
-  if (typeof input !== 'string') return '';
-  return he.encode(input, { useNamedReferences: true });
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 // SECURITY: Input Length Limits
