@@ -27,7 +27,7 @@ function generateTOTPSecret() {
 
 // Build a QR code data URL so the user can scan the secret into their app
 async function generateQRCode(username, secret) {
-  const otpauthUrl = authenticator.keyuri(username, 'SecureBlog', secret);
+  const otpauthUrl = authenticator.keyuri(username, 'TheSurvivorNetwork', secret);
   return QRCode.toDataURL(otpauthUrl);
 }
 

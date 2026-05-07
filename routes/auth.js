@@ -1,12 +1,12 @@
 /*
  * Authentication routes — register, login, logout, 2FA setup.
  * Parameterised queries throughout, input validated before anything
- * hits the database, and passwords are hashed with bcrypt + pepper.
+ * hits the database, and passwords are hashed with Argon2id + pepper.
  */
 
 const express = require('express');
 const router = express.Router();
-const bcrypt = require('bcrypt');
+const { hashPassword, verifyPassword } = require('../utils/hashing');
 const pool = require('../db/pool');
 const { encrypt, decrypt } = require('../utils/crypto');
 const { validateUsername, validateEmail, validatePassword, validateLength } = require('../utils/sanitise');
@@ -15,7 +15,6 @@ const { generateCSRFToken } = require('../middleware/csrfMiddleware');
 const { requireAuth } = require('../middleware/sessionCheck');
 const logger = require('../utils/logger');
 
-const BCRYPT_ROUNDS = 12;
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -25,28 +24,19 @@ const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
  *
  * Three layers protect stored passwords:
  *
- * Hashing (bcrypt, 12 rounds) — one-way function, so even with the hash
- * you can't get the password back. bcrypt is intentionally slow which
- * makes brute-forcing expensive.
+ * Hashing (Argon2id) — current OWASP recommendation. Memory-hard (64 MB)
+ * and resistant to both GPU and side-channel attacks. Even with the hash
+ * you cannot recover the original password.
  *
- * Salting (built into bcrypt) — each hash gets a unique random salt,
- * so two users with the same password end up with different hashes.
- * This kills rainbow-table attacks.
+ * Salting (built into argon2) — each hash gets a unique random salt
+ * embedded in the output, defeating rainbow-table attacks.
  *
- * Peppering (secret from .env) — a server-side string appended to every
- * password before hashing. It's not stored in the DB, so even a full
- * database dump isn't enough to crack anything without the pepper too.
+ * Peppering (secret from .env, applied in utils/hashing.js) — a
+ * server-side string appended before hashing, never stored in the DB.
+ * A database dump alone isn't enough to crack anything without the pepper.
  *
- * All three together means an attacker needs the DB dump + the server
- * environment + a lot of compute time to crack even one password.
- *
- * Library: bcrypt v5 — industry standard, handles salt automatically.
+ * Library: argon2 — winner of the 2015 Password Hashing Competition.
  */
-
-// Append the server-side pepper before hashing
-function applyPepper(password) {
-  return password + process.env.PEPPER;
-}
 
 // ─────────────────────────────────────────────────────────────
 // POST /auth/register
@@ -74,8 +64,7 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Username is already taken' });
     }
 
-    const pepperedPassword = applyPepper(password);
-    const passwordHash = await bcrypt.hash(pepperedPassword, BCRYPT_ROUNDS);
+    const passwordHash = await hashPassword(password);
 
     // Encrypt PII before it goes into the database
     const encryptedEmail = encrypt(email);
@@ -194,7 +183,7 @@ router.post('/login', async (req, res) => {
 
     if (result.rows.length === 0) {
       // Dummy hash so the response takes the same time as a real check
-      await bcrypt.hash('dummy_password', BCRYPT_ROUNDS);
+      await hashPassword('dummy_password');
       await artificialDelay(start, ARTIFICIAL_DELAY_MS);
       logger.security('Failed login - user not found', { username, ip: req.ip });
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -209,8 +198,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const pepperedPassword = applyPepper(password);
-    const passwordValid = await bcrypt.compare(pepperedPassword, user.password_hash);
+    const passwordValid = await verifyPassword(user.password_hash, password);
 
     if (!passwordValid) {
       const newAttempts = (user.failed_login_attempts || 0) + 1;

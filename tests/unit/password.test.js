@@ -1,66 +1,46 @@
 /**
  * Unit Tests — Password Hashing and Verification
- * Tests bcrypt hashing with pepper application.
+ * Tests Argon2id hashing via utils/hashing.js (includes pepper).
  */
 
-const bcrypt = require('bcrypt');
-
-const BCRYPT_ROUNDS = 12;
-const TEST_PEPPER = 'test_pepper_value_for_unit_tests';
-
-function applyPepper(password) {
-  return password + TEST_PEPPER;
-}
+const { hashPassword, verifyPassword } = require('../../utils/hashing');
 
 describe('Password Hashing and Verification', () => {
   const plainPassword = 'MySecure@Pass1';
 
   test('should hash a password successfully', async () => {
-    const peppered = applyPepper(plainPassword);
-    const hash = await bcrypt.hash(peppered, BCRYPT_ROUNDS);
+    const hash = await hashPassword(plainPassword);
     expect(hash).toBeDefined();
     expect(hash).not.toBe(plainPassword);
-    expect(hash).not.toBe(peppered);
-    expect(hash.length).toBeGreaterThan(50);
+    expect(hash.startsWith('$argon2id$')).toBe(true);
   });
 
   test('should verify a correct password', async () => {
-    const peppered = applyPepper(plainPassword);
-    const hash = await bcrypt.hash(peppered, BCRYPT_ROUNDS);
-    const isValid = await bcrypt.compare(peppered, hash);
+    const hash = await hashPassword(plainPassword);
+    const isValid = await verifyPassword(hash, plainPassword);
     expect(isValid).toBe(true);
   });
 
   test('should reject an incorrect password', async () => {
-    const peppered = applyPepper(plainPassword);
-    const hash = await bcrypt.hash(peppered, BCRYPT_ROUNDS);
-    const wrongPeppered = applyPepper('WrongPassword1!');
-    const isValid = await bcrypt.compare(wrongPeppered, hash);
-    expect(isValid).toBe(false);
-  });
-
-  test('should reject password without pepper', async () => {
-    const peppered = applyPepper(plainPassword);
-    const hash = await bcrypt.hash(peppered, BCRYPT_ROUNDS);
-    // Attempt to verify without pepper — should fail
-    const isValid = await bcrypt.compare(plainPassword, hash);
+    const hash = await hashPassword(plainPassword);
+    const isValid = await verifyPassword(hash, 'WrongPassword1!');
     expect(isValid).toBe(false);
   });
 
   test('should produce different hashes for the same password (unique salt)', async () => {
-    const peppered = applyPepper(plainPassword);
-    const hash1 = await bcrypt.hash(peppered, BCRYPT_ROUNDS);
-    const hash2 = await bcrypt.hash(peppered, BCRYPT_ROUNDS);
-    expect(hash1).not.toBe(hash2); // Different salts → different hashes
-    // But both should verify correctly
-    expect(await bcrypt.compare(peppered, hash1)).toBe(true);
-    expect(await bcrypt.compare(peppered, hash2)).toBe(true);
+    const hash1 = await hashPassword(plainPassword);
+    const hash2 = await hashPassword(plainPassword);
+    expect(hash1).not.toBe(hash2);
+    expect(await verifyPassword(hash1, plainPassword)).toBe(true);
+    expect(await verifyPassword(hash2, plainPassword)).toBe(true);
   });
 
-  test('should reject empty password', async () => {
-    const peppered = applyPepper('');
-    const hash = await bcrypt.hash(applyPepper(plainPassword), BCRYPT_ROUNDS);
-    const isValid = await bcrypt.compare(peppered, hash);
-    expect(isValid).toBe(false);
+  test('should reject empty password at hash time', async () => {
+    await expect(hashPassword('')).rejects.toThrow();
+  });
+
+  test('verifyPassword returns false for malformed hash', async () => {
+    const ok = await verifyPassword('not-a-hash', plainPassword);
+    expect(ok).toBe(false);
   });
 });

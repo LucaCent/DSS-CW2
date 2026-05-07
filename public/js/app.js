@@ -1,6 +1,6 @@
 /**
  * ============================================================
- * SECURE BLOG — Client-Side Application Logic
+ * THE SURVIVOR NETWORK — Client-Side Application Logic
  * ============================================================
  * This file handles navigation, form submissions, and API calls.
  * All state-changing requests include the CSRF token.
@@ -186,7 +186,7 @@ async function handleEnable2FA(event) {
 
   try {
     await apiCall('/auth/enable-2fa', 'POST', { userId: parseInt(userId), totpCode });
-    alert('2FA enabled successfully! You can now log in.');
+    alert('2FA set up successfully! You can now log in to the community.');
     navigate('login');
   } catch (err) {
     showError(errorEl, err.message);
@@ -339,7 +339,7 @@ async function startEditPost(postId) {
     document.getElementById('edit-content-count').textContent = decodeHTMLEntities(data.content).length;
     navigate('edit-post');
   } catch (err) {
-    alert('Failed to load post: ' + err.message);
+    alert('Failed to load story: ' + err.message);
   }
 }
 
@@ -389,7 +389,7 @@ async function executeDelete() {
     loadMyPosts();
   } catch (err) {
     closeDeleteModal();
-    alert('Failed to delete post: ' + err.message);
+    alert('Failed to delete your story: ' + err.message);
   }
 }
 
@@ -410,7 +410,7 @@ async function handleSearch(event) {
     const data = await apiCall(`/posts/search?q=${encodeURIComponent(query)}`);
     if (data.posts.length === 0) {
       resultsEl.innerHTML = '';
-      noResultsEl.textContent = `No posts found matching "${query}"`;
+      noResultsEl.textContent = `No stories found matching "${query}"`;
       noResultsEl.style.display = 'block';
     } else {
       noResultsEl.style.display = 'none';

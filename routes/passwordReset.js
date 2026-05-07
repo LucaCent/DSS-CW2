@@ -15,18 +15,13 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
-const bcrypt = require('bcrypt');
+const { hashPassword } = require('../utils/hashing');
 const pool = require('../db/pool');
 const { hashToken } = require('../utils/crypto');
 const { validatePassword, validateLength } = require('../utils/sanitise');
 const logger = require('../utils/logger');
 
-const BCRYPT_ROUNDS = 12;
 const TOKEN_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
-
-function applyPepper(password) {
-  return password + process.env.PEPPER;
-}
 
 // ─────────────────────────────────────────────────────────────
 // POST /password-reset/request — Request a password reset
@@ -122,8 +117,7 @@ router.post('/confirm', async (req, res) => {
       return res.status(400).json({ error: 'This reset token has expired. Please request a new one.' });
     }
 
-    const pepperedPassword = applyPepper(newPassword);
-    const passwordHash = await bcrypt.hash(pepperedPassword, BCRYPT_ROUNDS);
+    const passwordHash = await hashPassword(newPassword);
 
     await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, resetRecord.user_id]);
     await pool.query('UPDATE password_reset_tokens SET used = TRUE WHERE id = $1', [resetRecord.id]);

@@ -6,6 +6,9 @@
 
 require('dotenv').config();
 const express = require('express');
+const https = require('https');
+const http = require('http');
+const fs = require('fs');
 const session = require('express-session');
 const PgSession = require('connect-pg-simple')(session);
 const helmet = require('helmet');
@@ -95,7 +98,7 @@ app.use(session({
   name: 'sessionId',
   cookie: {
     httpOnly: true,
-    secure: false,       // Set to true in production with HTTPS
+    secure: fs.existsSync('key.pem'), // true when TLS certs are present
     sameSite: 'strict',
     maxAge: 24 * 60 * 60 * 1000, // 24 hours absolute expiry
   },
@@ -133,9 +136,23 @@ process.on('unhandledRejection', (reason, promise) => {
   logger.security('Unhandled promise rejection', { reason: String(reason) });
 });
 
-// Start Server
+// Start Server — HTTPS if certs exist, HTTP otherwise
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Secure Blog server running at http://localhost:${PORT}`);
-  logger.info(`Server started on port ${PORT}`);
-});
+
+try {
+  const httpsOptions = {
+    key: fs.readFileSync('key.pem'),
+    cert: fs.readFileSync('cert.pem'),
+  };
+  https.createServer(httpsOptions, app).listen(PORT, () => {
+    console.log(`The Survivor Network running at https://localhost:${PORT}`);
+    logger.info(`Server started (HTTPS) on port ${PORT}`);
+  });
+} catch (err) {
+  // Certs not found — fall back to plain HTTP for local development.
+  // Generate with: openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes
+  http.createServer(app).listen(PORT, () => {
+    console.log(`The Survivor Network running at http://localhost:${PORT} (no TLS certs found)`);
+    logger.info(`Server started (HTTP fallback) on port ${PORT}`);
+  });
+}

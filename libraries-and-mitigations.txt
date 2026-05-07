@@ -7,14 +7,15 @@ NOTE ON LIBRARY CHOICES
 Where a security function was simple enough to implement directly in
 JavaScript, we wrote our own code rather than pulling in a library.
 The rule was: use a library only when the underlying algorithm is too
-complex or sensitive to implement ourselves (e.g. bcrypt, otplib).
+complex or sensitive to implement ourselves (e.g. argon2, otplib).
 
 Custom implementations (no third-party library):
-  - Rate limiting       → plain JS Map (middleware/rateLimiter.js)
-  - Security logging    → Node fs.appendFileSync (utils/logger.js)
+  - Rate limiting        → plain JS Map (middleware/rateLimiter.js)
+  - Security logging     → Node fs.appendFileSync (utils/logger.js)
   - HTML output encoding → native String.replace() chains (utils/sanitise.js)
-  - CSRF tokens         → Node crypto.randomBytes / timingSafeEqual
+  - CSRF tokens          → Node crypto.randomBytes / timingSafeEqual
   - Password reset tokens → Node crypto SHA-256 hashing
+  - Encryption           → AES-256-GCM (Node crypto, no library)
 
 
 1. EXPRESS.JS (v4.18.2)
@@ -49,26 +50,29 @@ Example:
 Where used: db/pool.js, routes/auth.js, routes/posts.js, routes/passwordReset.js.
 
 
-3. BCRYPT (v5.1.1)
--------------------
-What it is: An adaptive password hashing library implementing the bcrypt algorithm.
+3. ARGON2 (v0.44.0)
+--------------------
+What it is: An Argon2id password hashing library. Argon2id is the winner of the 2015
+Password Hashing Competition and is the current OWASP recommendation.
 
-Why chosen: bcrypt is the industry standard for password storage. It is intentionally
-slow (cost factor configurable), automatically generates a unique salt per hash, and
-is resistant to GPU-based brute force. Writing a secure equivalent from scratch is not
-realistic, so a library is justified here.
+Why chosen: Argon2id is strictly stronger than bcrypt:
+  - Memory-hard (64 MB by default) — resistant to GPU-based and ASIC attacks.
+  - Hybrid of Argon2i (side-channel resistant) and Argon2d (GPU attack resistant).
+  - Writing a correct, safe implementation from scratch is not realistic, so a
+    well-audited library is the right choice here.
 
 Mitigation: PASSWORD HASHING, SALTING & PEPPERING
 Technique: Three layers work together:
-  - Hashing (bcrypt, 12 rounds): One-way transformation. 12 rounds means each hash
-    takes ~250ms to compute, making large-scale brute force expensive.
-  - Salting (built into bcrypt): Each call to bcrypt.hash() generates a unique
-    16-byte random salt embedded in the output, defeating rainbow table attacks.
-  - Peppering (server-side secret from .env): A secret string is appended to every
-    password before hashing. It is never stored in the database, so a database dump
-    alone is not enough to crack passwords.
+  - Hashing (Argon2id, memoryCost=64MB, timeCost=3): One-way transformation.
+    Memory-hardness makes large-scale brute force orders of magnitude more
+    expensive than bcrypt.
+  - Salting (built into argon2): Each call embeds a unique random salt in the
+    output, defeating rainbow table attacks.
+  - Peppering (server-side secret from .env, applied in utils/hashing.js): A
+    secret string appended before hashing. Never stored in the database, so a
+    database dump alone cannot crack passwords without the pepper.
 
-Where used: routes/auth.js, routes/passwordReset.js.
+Where used: utils/hashing.js, routes/auth.js, routes/passwordReset.js.
 
 
 4. HELMET (v7.1.0)
@@ -172,10 +176,12 @@ is maintained by the Node.js team and audited as part of the runtime.
 
 Mitigations:
 
-  a) DATABASE ENCRYPTION (AES-256-CBC) — utils/crypto.js
-  Sensitive fields (email, TOTP secret) are encrypted before storage. A random 16-byte
-  IV is generated per call so identical plaintexts produce different ciphertexts. The
-  32-byte key comes from .env and is never stored in the database.
+  a) DATABASE ENCRYPTION (AES-256-GCM) — utils/crypto.js
+  Sensitive fields (email, TOTP secret) are encrypted before storage. A random 12-byte
+  IV is generated per call so identical plaintexts produce different ciphertexts.
+  GCM mode provides authenticated encryption — the auth tag detects any tampering
+  with the ciphertext before decryption starts. The 32-byte key comes from .env.
+  Stored format: iv:authTag:ciphertext (all hex).
 
   b) CSRF TOKEN GENERATION — middleware/csrfMiddleware.js
   crypto.randomBytes(32) produces unpredictable tokens. crypto.timingSafeEqual()
@@ -227,7 +233,7 @@ Why chosen: Simple API, built-in assertions, clear output. Used to verify each
 security mechanism works in isolation.
 
 Tests written (5 files):
-  - tests/unit/password.test.js  — bcrypt hashing, pepper, unique salts
+  - tests/unit/password.test.js  — Argon2id hashing, pepper, unique salts
   - tests/unit/csrf.test.js      — token generation, validation, edge cases
   - tests/unit/sanitise.test.js  — HTML encoding, length validation
   - tests/unit/totp.test.js      — code generation, verification, rejection
@@ -244,8 +250,8 @@ Technique: Three combined measures:
   1. Generic error message — "Invalid credentials" for both wrong username and wrong
      password. An attacker cannot tell which one failed.
   2. Artificial 200ms delay — enforced on all login responses. Without it, a missing
-     user returns faster than a wrong password (no bcrypt needed), leaking information
-     through timing. A dummy bcrypt.hash() call fills the gap when the user isn't found.
+     user returns faster than a wrong password (no hashing needed), leaking information
+     through timing. A dummy hashPassword() call fills the gap when the user isn't found.
   3. Account lockout — 5 failed attempts locks the account for 15 minutes.
 Where used: routes/auth.js (login route).
 
@@ -279,7 +285,7 @@ PRODUCTION DEPENDENCIES (QUICK REFERENCE)
 ==========================================
 - express
 - pg (node-postgres)
-- bcrypt
+- argon2
 - helmet
 - express-session
 - connect-pg-simple

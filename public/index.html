@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Secure Blog</title>
+  <title>The Survivor Network</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
   <!-- Navigation -->
   <nav class="navbar">
     <div class="nav-container">
-      <a href="#" class="nav-brand" onclick="navigate('home')">Secure Blog</a>
+      <a href="#" class="nav-brand" onclick="navigate('home')">The Survivor Network</a>
       <div class="nav-links">
         <a href="#" onclick="navigate('home')" id="nav-home">Home</a>
         <a href="#" onclick="navigate('search')" id="nav-search">Search</a>
@@ -19,8 +19,8 @@
           <a href="#" onclick="navigate('register')" id="nav-register">Register</a>
         </span>
         <span id="user-nav" style="display:none;">
-          <a href="#" onclick="navigate('create-post')" id="nav-create">New Post</a>
-          <a href="#" onclick="navigate('my-posts')" id="nav-my-posts">My Posts</a>
+          <a href="#" onclick="navigate('create-post')" id="nav-create">Share Your Story</a>
+          <a href="#" onclick="navigate('my-posts')" id="nav-my-posts">My Stories</a>
           <span id="nav-username" class="nav-user"></span>
           <a href="#" onclick="handleLogout()" id="nav-logout">Logout</a>
         </span>
@@ -32,18 +32,21 @@
   <main class="container" id="app">
     <!-- Home / Public Posts -->
     <section id="page-home" class="page">
-      <h1>Latest Posts</h1>
+      <h1>Community Stories</h1>
+      <div class="hero-tagline">
+        A safe space for cancer survivors and those supporting them. Read experiences from people who understand, and share your own journey when you're ready.
+      </div>
       <div id="posts-list" class="posts-grid"></div>
-      <p id="no-posts" class="empty-state" style="display:none;">No posts yet. Be the first to write one!</p>
+      <p id="no-posts" class="empty-state" style="display:none;">No stories yet. Be the first to share your experience.</p>
     </section>
 
     <!-- Search -->
     <section id="page-search" class="page" style="display:none;">
-      <h1>Search Posts</h1>
+      <h1>Search Stories</h1>
       <form id="search-form" class="form-card" onsubmit="handleSearch(event)">
         <div class="form-group">
-          <label for="search-input">Search by keyword</label>
-          <input type="text" id="search-input" name="q" placeholder="Enter search term..."
+          <label for="search-input">Search by keyword or topic</label>
+          <input type="text" id="search-input" name="q" placeholder="e.g. treatment, hope, recovery..."  
                  maxlength="200" required>
           <small class="field-hint">Max 200 characters</small>
         </div>
@@ -149,28 +152,28 @@
 
     <!-- Create Post -->
     <section id="page-create-post" class="page" style="display:none;">
-      <h1>Create New Post</h1>
+      <h1>Share Your Story</h1>
       <div class="form-card">
         <form id="create-post-form" onsubmit="handleCreatePost(event)">
           <div id="create-error" class="alert alert-error" style="display:none;"></div>
           <div class="form-group">
-            <label for="post-title">Title</label>
-            <input type="text" id="post-title" name="title" minlength="1" maxlength="200" required>
+            <label for="post-title">Story Title</label>
+            <input type="text" id="post-title" name="title" minlength="1" maxlength="200" required placeholder="Give your story a title...">
             <small class="field-hint">Max 200 characters</small>
           </div>
           <div class="form-group">
-            <label for="post-content">Content</label>
-            <textarea id="post-content" name="content" rows="10" minlength="1" maxlength="5000" required></textarea>
+            <label for="post-content">Your Story</label>
+            <textarea id="post-content" name="content" rows="10" minlength="1" maxlength="5000" required placeholder="Share your experience, advice, or message of hope..."></textarea>
             <small class="field-hint"><span id="content-count">0</span>/5000 characters</small>
           </div>
-          <button type="submit" class="btn btn-primary">Publish Post</button>
+          <button type="submit" class="btn btn-primary">Publish Story</button>
         </form>
       </div>
     </section>
 
     <!-- Edit Post -->
     <section id="page-edit-post" class="page" style="display:none;">
-      <h1>Edit Post</h1>
+      <h1>Edit Your Story</h1>
       <div class="form-card">
         <form id="edit-post-form" onsubmit="handleEditPost(event)">
           <div id="edit-error" class="alert alert-error" style="display:none;"></div>
@@ -193,9 +196,9 @@
 
     <!-- My Posts -->
     <section id="page-my-posts" class="page" style="display:none;">
-      <h1>My Posts</h1>
+      <h1>My Stories</h1>
       <div id="my-posts-list" class="posts-grid"></div>
-      <p id="no-my-posts" class="empty-state" style="display:none;">You haven't written any posts yet.</p>
+      <p id="no-my-posts" class="empty-state" style="display:none;">You haven't shared any stories yet — whenever you're ready.</p>
     </section>
 
     <!-- Password Reset Request -->
@@ -254,8 +257,8 @@
   <!-- Delete confirmation modal -->
   <div id="delete-modal" class="modal" style="display:none;">
     <div class="modal-content">
-      <h3>Confirm Delete</h3>
-      <p>Are you sure you want to delete this post? This cannot be undone.</p>
+      <h3>Delete Story</h3>
+      <p>Are you sure you want to delete this story? This cannot be undone.</p>
       <div class="modal-actions">
         <button class="btn btn-danger" id="confirm-delete-btn">Delete</button>
         <button class="btn btn-secondary" onclick="closeDeleteModal()">Cancel</button>
@@ -264,7 +267,7 @@
   </div>
 
   <footer class="footer">
-    <p>&copy; 2025 Secure Blog — Built with security in mind</p>
+    <p><span class="ribbon">&hearts;</span>&copy; 2025 The Survivor Network &mdash; Built with care and security</p>
   </footer>
 
   <script src="/js/app.js"></script>

@@ -1,6 +1,6 @@
 /* ============================================================
-   SECURE BLOG — Stylesheet
-   Modern, clean design with accessibility in mind
+   THE SURVIVOR NETWORK — Stylesheet
+   Warm, compassionate design for a cancer survivor community
    ============================================================ */
 
 /* --- Reset & Base --- */
@@ -11,20 +11,22 @@
 }
 
 :root {
-  --primary: #2563eb;
-  --primary-dark: #1d4ed8;
-  --danger: #dc2626;
-  --danger-dark: #b91c1c;
-  --success: #16a34a;
-  --warning: #f59e0b;
-  --bg: #f8fafc;
-  --bg-card: #ffffff;
-  --text: #1e293b;
-  --text-light: #64748b;
-  --border: #e2e8f0;
-  --radius: 8px;
-  --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+  --primary: #B85C6E;
+  --primary-dark: #9A4A5A;
+  --danger: #c0392b;
+  --danger-dark: #a93226;
+  --success: #4a7c59;
+  --warning: #C99A3A;
+  --bg: #FAF7F4;
+  --bg-card: #FFF8F5;
+  --text: #2E1F1F;
+  --text-light: #7A5C5C;
+  --border: #E8D9D2;
+  --radius: 10px;
+  --shadow: 0 1px 4px rgba(80,30,30,0.08), 0 1px 2px rgba(80,30,30,0.05);
+  --shadow-lg: 0 8px 20px rgba(80,30,30,0.10), 0 3px 8px rgba(80,30,30,0.06);
+  --gold: #C99A3A;
+  --gold-light: #F5EDD6;
 }
 
 body {
@@ -59,10 +61,12 @@ body {
 }
 
 .nav-brand {
-  font-size: 1.4rem;
+  font-size: 1.3rem;
   font-weight: 700;
   color: var(--primary);
   text-decoration: none;
+  font-family: Georgia, 'Times New Roman', serif;
+  letter-spacing: 0.02em;
 }
 
 .nav-links {
@@ -84,7 +88,7 @@ body {
 
 .nav-links a:hover {
   background: var(--primary);
-  color: #fff;
+  color: #FFF8F5;
 }
 
 .nav-user {
@@ -99,6 +103,18 @@ body {
   margin: 2rem auto;
   padding: 0 1.5rem;
   flex: 1;
+}
+
+/* Warm hero tagline shown on the home page */
+.hero-tagline {
+  background: var(--gold-light);
+  border-left: 4px solid var(--gold);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.75rem;
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.7;
 }
 
 /* --- Page Sections --- */
@@ -118,6 +134,13 @@ body {
   box-shadow: var(--shadow);
   max-width: 540px;
   margin: 0 auto;
+}
+
+.page h1 {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.75rem;
+  color: var(--primary-dark);
+  margin-bottom: 1.25rem;
 }
 
 .form-group {
@@ -146,7 +169,7 @@ body {
 .form-group textarea:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  box-shadow: 0 0 0 3px rgba(184,92,110,0.15);
 }
 
 .form-group input:invalid:not(:placeholder-shown),
@@ -178,7 +201,7 @@ body {
 
 .btn-primary {
   background: var(--primary);
-  color: #fff;
+  color: #FFF8F5;
 }
 .btn-primary:hover { background: var(--primary-dark); }
 
@@ -246,9 +269,10 @@ body {
 }
 
 .post-card h2 {
-  font-size: 1.25rem;
+  font-size: 1.2rem;
   margin-bottom: 0.5rem;
-  color: var(--text);
+  color: var(--primary-dark);
+  font-family: Georgia, 'Times New Roman', serif;
 }
 
 .post-card .post-meta {
@@ -274,7 +298,8 @@ body {
   text-align: center;
   color: var(--text-light);
   padding: 3rem 1rem;
-  font-size: 1.05rem;
+  font-size: 1rem;
+  font-style: italic;
 }
 
 /* --- QR Code / 2FA --- */
@@ -380,7 +405,14 @@ body {
   color: var(--text-light);
   font-size: 0.85rem;
   border-top: 1px solid var(--border);
+  background: var(--bg-card);
   margin-top: auto;
+}
+
+.footer .ribbon {
+  color: var(--primary);
+  font-size: 1.1rem;
+  margin-right: 0.35rem;
 }
 
 /* --- Responsive --- */
