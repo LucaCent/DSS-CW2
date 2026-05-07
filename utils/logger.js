@@ -5,37 +5,37 @@
  *   attempts) are written to logs/security.log with a timestamp and the
  *   source IP. If something goes wrong we have a paper trail to look at.
  *
- * Uses winston (v3) for file + console logging with rotation.
+ * Implemented with Node's built-in fs.appendFileSync — no library needed.
  */
 
-const winston = require('winston');
+const fs = require('fs');
 const path = require('path');
 
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-    winston.format.printf(({ timestamp, level, message, ...meta }) => {
-      const metaStr = Object.keys(meta).length ? ' ' + JSON.stringify(meta) : '';
-      return `[${timestamp}] ${level.toUpperCase()}: ${message}${metaStr}`;
-    })
-  ),
-  transports: [
-    new winston.transports.File({
-      filename: path.join(__dirname, '..', 'logs', 'security.log'),
-      maxsize: 5242880, // 5MB
-      maxFiles: 5,
-    }),
-    new winston.transports.Console(),
-  ],
-});
+const LOG_FILE = path.join(__dirname, '..', 'logs', 'security.log');
+
+// Make sure the logs directory exists before we try to write to it
+const logsDir = path.join(__dirname, '..', 'logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
+
+function formatTimestamp() {
+  return new Date().toISOString().replace('T', ' ').slice(0, 19);
+}
+
+function writeLine(level, message, meta) {
+  const metaStr = Object.keys(meta).length ? ' ' + JSON.stringify(meta) : '';
+  const line = `[${formatTimestamp()}] ${level}: ${message}${metaStr}\n`;
+  console.log(line.trim());
+  fs.appendFileSync(LOG_FILE, line, 'utf8');
+}
 
 function security(message, meta = {}) {
-  logger.warn(`[SECURITY] ${message}`, meta);
+  writeLine('[SECURITY]', message, meta);
 }
 
 function info(message, meta = {}) {
-  logger.info(message, meta);
+  writeLine('INFO', message, meta);
 }
 
 module.exports = { security, info };
