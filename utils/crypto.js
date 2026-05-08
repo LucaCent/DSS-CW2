@@ -21,7 +21,7 @@ require('dotenv').config();
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;  // 12 bytes is the recommended IV size for GCM
-const KEY = Buffer.from(process.env.ENCRYPTION_KEY, 'hex'); // 64 hex chars → 32 bytes
+const KEY = Buffer.from(process.env.ENCRYPTION_KEY, 'utf8'); // 32 ASCII chars → 32 bytes
 
 if (KEY.length !== 32) {
   throw new Error(`ENCRYPTION_KEY must be exactly 32 bytes. Got ${KEY.length} bytes.`);

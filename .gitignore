@@ -5,3 +5,4 @@ logs/
 *.log
 key.pem
 cert.pem
+pg_hba.conf

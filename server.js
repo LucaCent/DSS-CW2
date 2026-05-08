@@ -9,6 +9,7 @@ const express = require('express');
 const https = require('https');
 const http = require('http');
 const fs = require('fs');
+const crypto = require('crypto');
 const session = require('express-session');
 const PgSession = require('connect-pg-simple')(session);
 const helmet = require('helmet');
@@ -40,8 +41,13 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrcAttr:["'unsafe-inline'"],
+      // 'unsafe-inline' removed from scriptSrc — all JS is in /js/app.js (external).
+      // This blocks injected <script> blocks, which is the primary XSS vector.
+      // scriptSrcAttr still needs 'unsafe-inline' for onclick/onsubmit attributes
+      // in the current HTML; eliminating those would require a full frontend refactor
+      // to use addEventListener() instead.
+      scriptSrc: ["'self'"],
+      scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:"],
       connectSrc: ["'self'"],
@@ -62,6 +68,20 @@ app.use(helmet({
     },
   },
 }));
+
+/*
+ * SECURITY: Request ID Middleware
+ * Attack prevented: Information disclosure during incident response
+ * A unique opaque ID is attached to every request. Error responses
+ * return only this ID — no stack traces, no file paths, no library
+ * versions. The same ID is logged server-side with the full error,
+ * so developers can correlate a user-reported error to the exact
+ * log entry without exposing any internal detail to an attacker.
+ */
+app.use((req, res, next) => {
+  req.id = crypto.randomBytes(6).toString('hex');
+  next();
+});
 
 // General Rate Limiting
 app.use(generalLimiter);
@@ -118,16 +138,48 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// SECURITY: Generic errors only — never leak stack traces or DB details to the client
+/*
+ * SECURITY: Global Error Handler — Stack Trace / Information Disclosure Prevention
+ * Attack prevented: OWASP A05:2021 — Security Misconfiguration (information leakage)
+ *
+ * Without this, Express's default error handler sends the full stack trace,
+ * file paths, library version numbers, and sometimes DB column names back
+ * to the client. All of that is free reconnaissance for an attacker.
+ *
+ * What the client sees: a generic message + an opaque requestId.
+ * What the server logs: the full stack trace tagged with the same requestId,
+ * so a developer can look up exactly what went wrong from a user report.
+ *
+ * Known client-error types are mapped to safe 4xx responses so the
+ * user gets something actionable without leaking internals.
+ *
+ * Must be the LAST middleware registered (after all routes) and must
+ * have exactly four parameters (err, req, res, next) for Express to
+ * treat it as an error handler.
+ */
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err.message);
-  logger.security('Unhandled application error', {
+  // Map known client errors to safe, informative 4xx responses
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Invalid JSON in request body' });
+  }
+  if (err.code === 'EBADCSRFTOKEN') {
+    return res.status(403).json({ error: 'Invalid CSRF token' });
+  }
+
+  // Everything else is a 500 — log full detail server-side only
+  const requestId = req.id || crypto.randomBytes(6).toString('hex');
+  logger.security(`[${requestId}] Unhandled application error`, {
     ip: req.ip,
     method: req.method,
     path: req.path,
     error: err.message,
+    stack: err.stack,
   });
-  res.status(500).json({ error: 'Something went wrong. Please try again later.' });
+
+  res.status(500).json({
+    error: 'An internal error occurred',
+    requestId,
+  });
 });
 
 // Catch unhandled async errors so the process doesn't crash

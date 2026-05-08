@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   username VARCHAR(50) UNIQUE NOT NULL,
   email_encrypted TEXT NOT NULL,           -- AES-256 encrypted at app layer
-  password_hash VARCHAR(255) NOT NULL,     -- bcrypt hash (includes salt)
+  password_hash TEXT NOT NULL,             -- Argon2id hash (includes salt, params embedded)
   totp_secret_encrypted TEXT,              -- AES-256 encrypted TOTP secret
   totp_enabled BOOLEAN DEFAULT FALSE,
   failed_login_attempts INTEGER DEFAULT 0,

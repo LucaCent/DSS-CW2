@@ -1,35 +1,9 @@
 /**
  * Unit Tests — Input Sanitisation and Output Encoding
- * Tests the HTML encoding and validation functions.
+ * Tests the real functions exported from utils/sanitise.js.
  */
 
-const he = require('he');
-
-// Replicate the sanitise functions
-function encodeHTML(input) {
-  if (typeof input !== 'string') return '';
-  return he.encode(input, { useNamedReferences: true });
-}
-
-const INPUT_LIMITS = {
-  username: { min: 3, max: 50 },
-  password: { min: 8, max: 128 },
-  email: { min: 5, max: 254 },
-  postTitle: { min: 1, max: 200 },
-  postContent: { min: 1, max: 5000 },
-  searchQuery: { min: 1, max: 200 },
-  totpCode: { exact: 6 },
-};
-
-function validateLength(field, value) {
-  const limits = INPUT_LIMITS[field];
-  if (!limits) return { valid: true, message: '' };
-  if (typeof value !== 'string') return { valid: false, message: `${field} must be a string` };
-  if (limits.exact && value.length !== limits.exact) return { valid: false, message: `${field} must be exactly ${limits.exact} characters` };
-  if (limits.min && value.length < limits.min) return { valid: false, message: `${field} must be at least ${limits.min} characters` };
-  if (limits.max && value.length > limits.max) return { valid: false, message: `${field} must be at most ${limits.max} characters` };
-  return { valid: true, message: '' };
-}
+const { encodeHTML, validateLength } = require('../../utils/sanitise');
 
 describe('HTML Encoding (XSS Prevention)', () => {
   test('should encode < and > characters', () => {
@@ -52,7 +26,8 @@ describe('HTML Encoding (XSS Prevention)', () => {
 
   test('should encode single quotes', () => {
     const result = encodeHTML("it's a test");
-    expect(result).toContain('&apos;');
+    // utils/sanitise.js uses &#39; (numeric entity) — valid and browser-safe
+    expect(result).toContain('&#39;');
   });
 
   test('should handle empty string', () => {
