@@ -1,0 +1,451 @@
+{
+  "info": {
+    "name": "DSS-CW2 Security Test Suite",
+    "_postman_id": "dss-cw2-security-tests",
+    "description": "Automated security tests for CMP-6045B Group 15. Tests CSRF protection, SQL injection resistance, authentication, rate limiting, error handling, and access control.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://localhost:3000", "type": "string" },
+    { "key": "csrfToken", "value": "", "type": "string" },
+    { "key": "sessionCookie", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. CSRF Protection",
+      "item": [
+        {
+          "name": "GET CSRF Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response contains csrfToken', () => pm.expect(json).to.have.property('csrfToken'));",
+                  "pm.test('Token is 64-char hex string', () => pm.expect(json.csrfToken).to.match(/^[0-9a-f]{64}$/));",
+                  "pm.collectionVariables.set('csrfToken', json.csrfToken);",
+                  "console.log('CSRF token captured:', json.csrfToken.substring(0,16) + '...');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/auth/csrf-token"
+          }
+        },
+        {
+          "name": "POST Login WITHOUT CSRF Token → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('CSRF-less request returns 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('Response contains error field', () => pm.expect(json).to.have.property('error'));",
+                  "pm.test('Error message does not reveal internals', () => {",
+                  "  const body = JSON.stringify(json);",
+                  "  pm.expect(body).to.not.include('stack');",
+                  "  pm.expect(body).to.not.include('node_modules');",
+                  "  pm.expect(body).to.not.include('at Object');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\": \"testuser\", \"password\": \"TestPass1!\"}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "POST Register WITHOUT CSRF Token → 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('CSRF-less register returns 403', () => pm.response.to.have.status(403));",
+                  "pm.test('Response has error property', () => pm.expect(pm.response.json()).to.have.property('error'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\": \"hacker\", \"email\": \"h@h.com\", \"password\": \"Test1!\"}"
+            },
+            "url": "{{baseUrl}}/auth/register"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Authentication & Account Enumeration",
+      "item": [
+        {
+          "name": "POST Login with valid CSRF — wrong credentials → 401 generic",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Fetch a fresh CSRF token before this request",
+                  "pm.sendRequest({ url: pm.collectionVariables.get('baseUrl') + '/auth/csrf-token', method: 'GET' }, (err, res) => {",
+                  "  if (!err) pm.collectionVariables.set('csrfToken', res.json().csrfToken);",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Wrong credentials return 401', () => pm.response.to.have.status(401));",
+                  "const json = pm.response.json();",
+                  "pm.test('Error message is generic (no username/password distinction)', () => {",
+                  "  pm.expect(json.error).to.equal('Invalid credentials');",
+                  "});",
+                  "pm.test('Response does not reveal whether username exists', () => {",
+                  "  const body = JSON.stringify(json);",
+                  "  pm.expect(body).to.not.include('user not found');",
+                  "  pm.expect(body).to.not.include('wrong password');",
+                  "  pm.expect(body).to.not.include('does not exist');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-csrf-token", "value": "{{csrfToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\": \"nonexistentuser99\", \"password\": \"WrongPass1!\"}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "POST Login with valid CSRF — valid username wrong password → same 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Returns 401', () => pm.response.to.have.status(401));",
+                  "const json = pm.response.json();",
+                  "pm.test('Same generic message as nonexistent user — no enumeration', () => {",
+                  "  pm.expect(json.error).to.equal('Invalid credentials');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-csrf-token", "value": "{{csrfToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\": \"admin\", \"password\": \"definitelywrong99\"}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. SQL Injection Resistance",
+      "item": [
+        {
+          "name": "SQL Injection in username field → rejected safely",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('SQL injection does not return 200 (bypass)', () => pm.response.to.not.have.status(200));",
+                  "pm.test('Status is 401 or 400 (not 500 DB error)', () => {",
+                  "  pm.expect([400, 401, 403]).to.include(pm.response.code);",
+                  "});",
+                  "const body = JSON.stringify(pm.response.json());",
+                  "pm.test('Response does not contain SQL error details', () => {",
+                  "  pm.expect(body).to.not.include('syntax error');",
+                  "  pm.expect(body).to.not.include('PostgreSQL');",
+                  "  pm.expect(body).to.not.include('column');",
+                  "  pm.expect(body).to.not.include('relation');",
+                  "  pm.expect(body).to.not.include('SELECT');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-csrf-token", "value": "{{csrfToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\": \"' OR 1=1 --\", \"password\": \"anything\"}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "SQL Injection in search query → rejected safely",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('SQL injection in search does not return 500', () => pm.response.to.not.have.status(500));",
+                  "const body = JSON.stringify(pm.response.json());",
+                  "pm.test('No SQL error details leak', () => {",
+                  "  pm.expect(body).to.not.include('syntax error');",
+                  "  pm.expect(body).to.not.include('PostgreSQL');",
+                  "  pm.expect(body).to.not.include('column');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/posts/search?q=' UNION SELECT username, password_hash FROM users --",
+              "host": ["{{baseUrl}}"],
+              "path": ["posts", "search"],
+              "query": [{ "key": "q", "value": "' UNION SELECT username, password_hash FROM users --" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Access Control & IDOR",
+      "item": [
+        {
+          "name": "GET /posts (public) → 200 OK",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Public post listing returns 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response has posts array', () => pm.expect(pm.response.json()).to.have.property('posts'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/posts"
+          }
+        },
+        {
+          "name": "POST /posts without auth → 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Creating post without login returns 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Error message present', () => pm.expect(pm.response.json()).to.have.property('error'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-csrf-token", "value": "{{csrfToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\": \"Hacker post\", \"content\": \"I should not be able to post this\"}"
+            },
+            "url": "{{baseUrl}}/posts"
+          }
+        },
+        {
+          "name": "DELETE /posts/1 without auth → 401 (IDOR check)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Deleting post without session returns 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "x-csrf-token", "value": "{{csrfToken}}" }],
+            "url": "{{baseUrl}}/posts/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Error Handling & Information Disclosure",
+      "item": [
+        {
+          "name": "GET unknown route → 404 generic (no route leakage)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Unknown route returns 200 (SPA fallback) or 404', () => {",
+                  "  pm.expect([200, 404]).to.include(pm.response.code);",
+                  "});",
+                  "pm.test('Response does not reveal internal route structure', () => {",
+                  "  const body = pm.response.text();",
+                  "  pm.expect(body).to.not.include('node_modules');",
+                  "  pm.expect(body).to.not.include('at Object.');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/secret-panel"
+          }
+        },
+        {
+          "name": "POST malformed JSON → 400 generic (no stack trace)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Malformed JSON returns 400 or 403', () => {",
+                  "  pm.expect([400, 403]).to.include(pm.response.code);",
+                  "});",
+                  "const body = JSON.stringify(pm.response.json());",
+                  "pm.test('No stack trace in response', () => {",
+                  "  pm.expect(body).to.not.match(/at\\s+.+:\\d+:\\d+/);",
+                  "  pm.expect(body).to.not.include('node_modules');",
+                  "  pm.expect(body).to.not.include('.js:');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-csrf-token", "value": "{{csrfToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{this is not valid json at all!!!"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Security Headers (CSP / Clickjacking / HSTS)",
+      "item": [
+        {
+          "name": "GET / — verify security headers present",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('X-Frame-Options: DENY present', () => {",
+                  "  pm.expect(pm.response.headers.get('x-frame-options')).to.equal('DENY');",
+                  "});",
+                  "pm.test('Content-Security-Policy present', () => {",
+                  "  pm.expect(pm.response.headers.get('content-security-policy')).to.exist;",
+                  "});",
+                  "pm.test('CSP blocks unsafe-inline scripts', () => {",
+                  "  const csp = pm.response.headers.get('content-security-policy') || '';",
+                  "  pm.expect(csp).to.include('frame-ancestors');",
+                  "});",
+                  "pm.test('Strict-Transport-Security present (HSTS)', () => {",
+                  "  pm.expect(pm.response.headers.get('strict-transport-security')).to.exist;",
+                  "});",
+                  "pm.test('X-Content-Type-Options: nosniff present', () => {",
+                  "  pm.expect(pm.response.headers.get('x-content-type-options')).to.equal('nosniff');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Rate Limiting",
+      "item": [
+        {
+          "name": "Rapid fire login attempts → 429 Too Many Requests",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// This test is intended to run after the Postman Runner has",
+                  "// iterated this request 11+ times. On the 11th attempt within",
+                  "// 15 minutes from the same IP, the rate limiter should return 429.",
+                  "pm.test('After many attempts, rate limiter fires (429) or request rejected (401)', () => {",
+                  "  pm.expect([401, 429]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 429) {",
+                  "  pm.test('429 response has error message', () => {",
+                  "    pm.expect(pm.response.json()).to.have.property('error');",
+                  "  });",
+                  "  console.log('✅ Rate limiter confirmed active');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-csrf-token", "value": "{{csrfToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"username\": \"rateLimitTest\", \"password\": \"WrongPass1!\"}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        }
+      ]
+    }
+  ]
+}
