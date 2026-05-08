@@ -1,12 +1,9 @@
-/*
- * SECURITY: Security Event Logging
- * Attack prevented: Undetected intrusions / lack of audit trail
- * How it works: Suspicious events (failed logins, CSRF failures, IDOR
- *   attempts) are written to logs/security.log with a timestamp and the
- *   source IP. If something goes wrong we have a paper trail to look at.
- *
- * Implemented with Node's built-in fs.appendFileSync — no library needed.
- */
+// Minimal logger — writes to logs/security.log.
+// Suspicious events (failed logins, CSRF failures, IDOR attempts) go
+// through logger.security(); normal app events use logger.info(). The
+// split makes it easier to grep for just the security events during
+// an incident. Using fs.appendFileSync rather than a logging library —
+// keeps dependencies down and avoids async edge cases at startup.
 
 const fs = require('fs');
 const path = require('path');

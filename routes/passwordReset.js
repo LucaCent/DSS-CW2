@@ -1,15 +1,13 @@
 /*
- * SECURITY: Secure Password Reset
- * Attack prevented: Account takeover through weak reset flow
+ * Password reset routes.
+ * Flow: request → generate random token → store only the SHA-256 hash in
+ * the DB (not the token itself) → return plaintext token to user (would
+ * be emailed in production) → on confirm, re-hash submitted token and
+ * compare. 15-minute expiry, single-use, and requesting a new token
+ * invalidates any outstanding ones.
  *
- * The flow: user requests a reset → server generates a random token →
- * only the SHA-256 hash gets stored in the DB → plaintext token shown
- * to the user (would be emailed in production) → token expires after
- * 15 minutes → when submitted, server re-hashes it to compare.
- *
- * Hashing the token in the DB means a database leak doesn't let an
- * attacker reset anyone's password. Old unused tokens are invalidated
- * when a new one is requested, and each token is single-use.
+ * Storing the hash means a DB dump doesn't hand an attacker working reset
+ * links — same reasoning as not storing plaintext passwords.
  */
 
 const express = require('express');

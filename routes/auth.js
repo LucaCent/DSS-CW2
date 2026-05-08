@@ -18,25 +18,10 @@ const logger = require('../utils/logger');
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
-/*
- * SECURITY: Password Hashing, Salting & Peppering
- * Attack prevented: Password exposure from a database breach
- *
- * Three layers protect stored passwords:
- *
- * Hashing (Argon2id) — current OWASP recommendation. Memory-hard (64 MB)
- * and resistant to both GPU and side-channel attacks. Even with the hash
- * you cannot recover the original password.
- *
- * Salting (built into argon2) — each hash gets a unique random salt
- * embedded in the output, defeating rainbow-table attacks.
- *
- * Peppering (secret from .env, applied in utils/hashing.js) — a
- * server-side string appended before hashing, never stored in the DB.
- * A database dump alone isn't enough to crack anything without the pepper.
- *
- * Library: argon2 — winner of the 2015 Password Hashing Competition.
- */
+// Passwords are hashed with Argon2id + pepper before hitting the DB —
+// see utils/hashing.js for the tuning params and the reasoning behind
+// the choice. The short version: it's memory-hard, salt is automatic,
+// and the pepper means a DB dump alone isn't enough to crack anything.
 
 // ─────────────────────────────────────────────────────────────
 // POST /auth/register
@@ -143,21 +128,16 @@ router.post('/enable-2fa', async (req, res) => {
 // POST /auth/login
 // ─────────────────────────────────────────────────────────────
 
-/*
- * SECURITY: Account Enumeration Prevention
- * Attack prevented: Username harvesting / account enumeration
- *
- * Account enumeration is when an attacker tries different usernames to
- * figure out which ones exist. They can do this by looking at the error
- * message ("user not found" vs "wrong password") or by timing the
- * response (a missing user returns faster since there's no hash to check).
- *
- * We prevent it three ways:
- * 1. Same "Invalid credentials" message regardless of what went wrong.
- * 2. A 200ms floor on all responses so timing is consistent. When the
- *    user doesn't exist we also run a dummy bcrypt hash to fill the gap.
- * 3. Account lockout after 5 failed attempts + IP rate limiting.
- */
+// Login needs careful handling of timing and error messages. If "user not
+// found" is faster than "wrong password" (no hash to check), an attacker
+// can tell which usernames exist just by measuring response time.
+//
+// To prevent that:
+//   - Run a dummy hash when the user doesn't exist, so both paths take
+//     roughly the same time.
+//   - Always respond "Invalid credentials" regardless of what failed.
+//   - Enforce a 200ms response floor either way.
+//   - Lock the account for 15 min after 5 consecutive failures.
 router.post('/login', async (req, res) => {
   const ARTIFICIAL_DELAY_MS = 200;
   const start = Date.now();

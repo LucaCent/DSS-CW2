@@ -1,14 +1,12 @@
 /*
- * Database connection pool using pg (node-postgres).
+ * PostgreSQL connection pool (node-postgres).
+ * Capped at 20 connections — if traffic spikes, queries queue rather than
+ * hammering the DB with unlimited parallel clients.
  *
- * SECURITY: SQL Injection Prevention
- * Attack prevented: SQL injection
- * How it works: Every query that goes through this pool must use
- *   parameterised statements ($1, $2, ...) instead of concatenating
- *   user input into the SQL string. pg treats parameter values as
- *   pure data, so they can never be interpreted as SQL commands.
- *   The pool also caps concurrent connections at 20 to avoid
- *   resource exhaustion if traffic spikes.
+ * SQL injection: every query using this pool should use $1/$2/... parameters.
+ * pg sends those as typed values, never as part of the SQL string, so there's
+ * no way for user input to be interpreted as a SQL command. We went through
+ * all the routes to make sure nothing concatenates user input into a query.
  */
 
 const { Pool } = require('pg');

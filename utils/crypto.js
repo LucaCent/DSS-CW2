@@ -1,20 +1,15 @@
-/*
- * SECURITY: Database Encryption (AES-256-GCM)
- * Attack prevented: Data leakage if the database is compromised
- * How it works: Personally identifiable fields (emails, TOTP secrets)
- *   are encrypted here before being stored in Postgres. The key lives
- *   in .env and is never committed to source control. A fresh random
- *   IV is generated per encrypt() call so the same plaintext never
- *   produces the same ciphertext twice.
- *
- * GCM mode is used rather than CBC because it provides authenticated
- * encryption — the auth tag detects any tampering with the ciphertext
- * before decryption even starts. CBC has no such guarantee.
- *
- * Stored format: iv:authTag:ciphertext (all hex, separated by ':')
- *
- * Uses the built-in Node.js crypto module — no extra dependency needed.
- */
+// AES-256-GCM encryption for sensitive columns (email, TOTP secret).
+// We chose GCM over CBC because GCM gives you authenticated encryption —
+// it produces an auth tag that lets you detect if the ciphertext was
+// tampered with before you even try to decrypt. CBC just encrypts, no
+// integrity check at all.
+//
+// Each encrypt() call generates a fresh random IV so the same plaintext
+// won't produce the same ciphertext twice (important for GCM especially —
+// reusing an IV with the same key completely breaks GCM's security).
+//
+// Everything gets packed into one string: iv:authTag:ciphertext (hex)
+// so we only need one DB column per encrypted field.
 
 const crypto = require('crypto');
 require('dotenv').config();

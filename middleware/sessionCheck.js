@@ -1,21 +1,15 @@
 /*
- * SECURITY: Session Hijacking Prevention — Auth Guard Middleware
- * Attack prevented: Session hijacking, session fixation, unauthorised access
+ * Auth guard — attach to any route that needs a logged-in user.
  *
- * Session hijacking is where someone steals or guesses a user's session
- * cookie and uses it to impersonate them. Common vectors:
- *   - XSS scripts reading document.cookie  → blocked by HttpOnly flag
- *   - Sniffing unencrypted traffic         → blocked by Secure flag (HTTPS)
- *   - Cross-site request tricks            → blocked by SameSite=Strict
- *   - Pre-setting a known session ID       → blocked by regenerating the
- *                                             session on login
+ * Beyond the basic req.session.userId check, it enforces two timeouts:
+ *   - 15-min idle: if lastActivity is stale, the session gets destroyed.
+ *     Protects against someone walking up to an unattended machine.
+ *   - 24-hour absolute: even an active session eventually expires and
+ *     forces a fresh login.
  *
- * This middleware also enforces two timeouts:
- *   - 15 min idle timeout — if the user walks away, the session dies
- *   - 24 hour absolute expiry — forces re-auth even for active sessions
- *
- * Cookie flags are set in server.js; this file handles the timeout checks
- * and makes sure every protected route actually has a valid session.
+ * The cookie flags that prevent the session token being stolen in the
+ * first place (HttpOnly, Secure, SameSite) are set in server.js.
+ * Session regeneration on login (preventing fixation) is in auth.js.
  */
 
 const IDLE_TIMEOUT_MS = 15 * 60 * 1000;      // 15 minutes

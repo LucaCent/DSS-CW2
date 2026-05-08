@@ -1,14 +1,14 @@
-/*
- * SECURITY: Password Hashing (Argon2id + pepper)
- * Attack prevented: Password cracking after a database breach
- * How it works: Argon2id is memory-hard (64 MB per attempt) so brute
- *   forcing is expensive even with a GPU. The argon2 library handles
- *   per-user salt generation automatically — it's embedded in the hash
- *   string, so the same password always produces a different output.
- *   A server-side pepper from .env is appended before hashing so a
- *   DB dump alone isn't enough to start cracking — the attacker needs
- *   the application environment too.
- */
+// Password hashing with Argon2id.
+// Picked Argon2id over bcrypt because it won the 2015 Password Hashing
+// Competition and OWASP now recommends it. The "id" variant is a hybrid —
+// it's resistant to side-channel attacks (like Argon2i) AND GPU attacks
+// (like Argon2d). bcrypt doesn't have the memory-hardness that makes
+// GPU cracking expensive.
+//
+// Three layers of protection:
+//   salt   — auto-generated per hash by the library, defeats rainbow tables
+//   pepper — appended from .env before hashing, so a DB dump alone is useless
+//   argon2id — 64MB memory per attempt, makes brute force very slow
 
 const argon2 = require('argon2');
 require('dotenv').config();

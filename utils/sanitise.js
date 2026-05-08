@@ -10,9 +10,8 @@ function encodeHTML(input){
     .replace(/'/g, '&#39;')
 }
 
-// SECURITY: Input Length Limits
-// Attack prevented: DoS via oversized payloads, DB column overflow
-// Server-side check — client validation can always be bypassed
+// Length limits enforced server-side — client-side validation can always be
+// bypassed with curl. Also avoids DB column overflow on the TEXT columns.
 const INPUT_LIMITS = {
   username: { min: 3, max: 50 },
   password: { min: 8, max: 128 },

@@ -1,22 +1,16 @@
 /*
- * SECURITY: CSRF Protection
- * Attack prevented: Cross-Site Request Forgery
+ * CSRF — when attacker.com tricks the user's browser into making a request
+ * to our app. The browser sends the session cookie automatically, so without
+ * extra protection the server has no way to tell the request didn't come from
+ * our own frontend.
  *
- * CSRF is when a malicious page tricks the user's browser into making a
- * request to our app while the user is logged in — the browser sends the
- * session cookie automatically, so the server thinks it's legitimate.
+ * Fix: generate a 32-byte random token, store it in the session, require it
+ * on every POST/PUT/DELETE. A cross-origin page can't read our token (same-
+ * origin policy), so a forged request will always be missing or wrong.
+ * SameSite=strict on the cookie is an extra layer on top of this.
  *
- * We stop this with a random token that the attacker can't know:
- *   - The server generates a 32-byte random token and stores it in the session.
- *   - The frontend includes it in every POST/PUT/DELETE (as a header or
- *     hidden form field).
- *   - The server checks the submitted token matches the session copy.
- *   - A cross-origin page can't read our token (same-origin policy), so
- *     any forged request will be missing it or have the wrong value.
- *
- * Also using SameSite=Strict on cookies as an extra layer.
- *
- * Custom implementation using Node crypto — no third-party CSRF library.
+ * Comparison uses timingSafeEqual so an attacker can't brute-force the token
+ * one byte at a time by measuring response times.
  */
 
 const crypto = require('crypto');

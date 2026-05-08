@@ -162,13 +162,9 @@ router.post('/', requireAuth, async (req, res) => {
 // PUT /posts/:id — Edit a post (auth required, own posts only)
 // ─────────────────────────────────────────────────────────────
 
-/*
- * SECURITY: IDOR Prevention
- * Attack prevented: Insecure Direct Object Reference
- * Before any edit or delete we check that the logged-in user actually
- * owns the post. Without this, someone could just change the ID in the
- * URL and mess with another user's content.
- */
+// Ownership check before edit — without this, any logged-in user could
+// swap the post ID in the URL and overwrite someone else's post.
+// Same check is in DELETE below.
 router.put('/:id', requireAuth, async (req, res) => {
   try {
     const postId = parseInt(req.params.id, 10);

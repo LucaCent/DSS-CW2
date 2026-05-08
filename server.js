@@ -22,20 +22,19 @@ const logger = require('./utils/logger');
 const app = express();
 
 /*
- * SECURITY: HTTP Security Headers (helmet.js)
- * Attack prevented: Clickjacking, MIME sniffing, protocol downgrade, XSS
+ * Helmet sets a bunch of security headers in one call — we just tweak
+ * a few of its defaults to match what we actually need:
  *
- * helmet sets a bunch of headers in one go:
- *   - X-Frame-Options: DENY — stops the page being loaded in an iframe
- *     (clickjacking). CSP frame-ancestors: 'none' does the same thing
- *     for modern browsers; both are set for compatibility.
- *   - X-Content-Type-Options: nosniff — stops browsers guessing MIME types
- *   - HSTS — forces HTTPS for a year, prevents protocol downgrades
- *   - Referrer-Policy: same-origin — doesn't leak URLs to other sites
- *   - Permissions-Policy — turns off camera/mic/geo since we don't need them
- *   - CSP: scripts only from 'self', so injected inline scripts are blocked
+ *   X-Frame-Options: DENY + CSP frame-ancestors: 'none' — both set for
+ *   compatibility. Together they stop any site from embedding us in an iframe.
  *
- * Library: helmet v7
+ *   scriptSrc: ['self'] only, no 'unsafe-inline' — injected <script> blocks
+ *   go nowhere. scriptSrcAttr still allows inline onclick/onsubmit handlers
+ *   because the HTML uses them and refactoring to addEventListener was out of
+ *   scope. Worth flagging in the report limitations section.
+ *
+ *   HSTS maxAge: 1 year — browser remembers to use HTTPS automatically
+ *   after the first visit. Permissions-Policy locks out camera/mic/geo.
  */
 app.use(helmet({
   contentSecurityPolicy: {
@@ -69,15 +68,10 @@ app.use(helmet({
   },
 }));
 
-/*
- * SECURITY: Request ID Middleware
- * Attack prevented: Information disclosure during incident response
- * A unique opaque ID is attached to every request. Error responses
- * return only this ID — no stack traces, no file paths, no library
- * versions. The same ID is logged server-side with the full error,
- * so developers can correlate a user-reported error to the exact
- * log entry without exposing any internal detail to an attacker.
- */
+// Every request gets a random 6-byte hex ID attached to req.id.
+// Error responses send this back to the client instead of any stack trace
+// or internal detail — the user can quote it and we can look it up in
+// the log. Same ID, completely different information at each end.
 app.use((req, res, next) => {
   req.id = crypto.randomBytes(6).toString('hex');
   next();
@@ -93,18 +87,15 @@ app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 /*
- * SECURITY: Session Cookie Configuration
- * Attack prevented: Session hijacking, session fixation
+ * Sessions stored in Postgres (connect-pg-simple) rather than memory —
+ * in-memory sessions disappear on restart, which logs everyone out and
+ * makes proper invalidation impossible.
  *
- * Cookie flags that matter:
- *   HttpOnly  — JS can't read the cookie, so XSS can't steal it
- *   Secure    — cookie only sent over HTTPS (disabled for localhost)
- *   SameSite  — 'strict' means the browser won't attach it to cross-site
- *               requests, which blocks CSRF and cross-origin session leaks
- *   maxAge    — 24h hard limit; stolen tokens expire after a day
- *
- * Sessions are stored in Postgres (connect-pg-simple) instead of memory
- * so they survive restarts and can be properly invalidated.
+ * Cookie flags: HttpOnly means JS can't read it (XSS can't steal the
+ * session), Secure keeps it off plain HTTP, SameSite=strict tells the
+ * browser not to attach it to cross-site requests at all (extra layer
+ * on top of our CSRF token check). maxAge 24h means a stolen cookie
+ * at least expires — it's not valid indefinitely.
  */
 app.use(session({
   store: new PgSession({
@@ -138,25 +129,15 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-/*
- * SECURITY: Global Error Handler — Stack Trace / Information Disclosure Prevention
- * Attack prevented: OWASP A05:2021 — Security Misconfiguration (information leakage)
- *
- * Without this, Express's default error handler sends the full stack trace,
- * file paths, library version numbers, and sometimes DB column names back
- * to the client. All of that is free reconnaissance for an attacker.
- *
- * What the client sees: a generic message + an opaque requestId.
- * What the server logs: the full stack trace tagged with the same requestId,
- * so a developer can look up exactly what went wrong from a user report.
- *
- * Known client-error types are mapped to safe 4xx responses so the
- * user gets something actionable without leaking internals.
- *
- * Must be the LAST middleware registered (after all routes) and must
- * have exactly four parameters (err, req, res, next) for Express to
- * treat it as an error handler.
- */
+// Global error handler — must be registered last, after all routes,
+// and must have exactly 4 params (err, req, res, next) for Express
+// to treat it as an error handler rather than normal middleware.
+//
+// Without this, Express's default would send the full stack trace back
+// to the client — file paths, library versions, sometimes DB column names.
+// Instead: known client errors get a sensible 4xx, everything else gets a
+// generic 500 + the requestId. The full trace is logged server-side with
+// that same ID so we can pull it from the log when a user reports an error.
 app.use((err, req, res, next) => {
   // Map known client errors to safe, informative 4xx responses
   if (err.type === 'entity.parse.failed') {

@@ -1,20 +1,14 @@
 /*
- * SECURITY: TOTP Two-Factor Authentication
- * Attack prevented: Account takeover when a password is compromised
+ * TOTP (Time-based One-Time Password, RFC 6238) — how authenticator apps work.
+ * The server and the user's app share a secret key. Both sides independently
+ * combine that key with the current 30-second time window to generate the same
+ * 6-digit code. No network call needed at login; the code just rotates every 30s.
  *
- * TOTP (Time-based One-Time Password, RFC 6238) works by having the
- * server and the user's authenticator app share a secret key. Both
- * sides combine that secret with the current time (in 30-second steps)
- * to independently produce the same 6-digit code. The code changes
- * every 30 seconds, so it's only valid for a short window.
+ * Even with a stolen password, an attacker needs the physical device to log in.
+ * Credential stuffing and keyloggers don't help if 2FA is on.
  *
- * The point is that even if someone gets hold of a user's password,
- * they still can't log in without the code from the physical device.
- * Phishing, credential stuffing, keyloggers — none of those are
- * enough on their own when 2FA is enabled.
- *
- * Library: otplib (v12) — RFC-compliant, works with Google Authenticator/Authy.
- * QR codes generated with the qrcode package.
+ * otplib handles the RFC details; qrcode generates the scan-able QR so users
+ * don't have to type a base32 string into their authenticator app by hand.
  */
 
 const { authenticator } = require('otplib');
