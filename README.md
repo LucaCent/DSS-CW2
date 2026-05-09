@@ -1,221 +1,147 @@
-# Secure Blog Application
+# The Survivor Network — DSS Coursework (Group 15)
 
-A secure, full-featured blog application built with Node.js, Express.js, and PostgreSQL. Designed to demonstrate comprehensive web security mitigations including protection against SQL injection, XSS, CSRF, session hijacking, account enumeration, and more.
+A blog application built for the CMP-6045B Digital Systems Security coursework. The focus is on implementing real security controls rather than just describing them — everything listed below is actually wired up and testable.
 
----
-
-## Prerequisites
-
-| Requirement | Version |
-|-------------|---------|
-| **Node.js** | v18.x or later |
-| **PostgreSQL** | v14.x or later |
-| **npm** | v9.x or later |
-| **Authenticator app** | Google Authenticator, Authy, or any TOTP-compatible app |
+Built with Node.js, Express, and PostgreSQL.
 
 ---
 
-## Setup Instructions
+## What you need before starting
 
-### 1. Clone the Repository
+- Node.js v18+
+- PostgreSQL v14+
+- An authenticator app (Google Authenticator, Authy, anything TOTP-compatible)
+
+---
+
+## Getting it running
+
+**1. Clone and install**
 ```bash
-git clone <repository-url>
+git clone https://github.com/LucaCent/DSS-CW2.git
 cd DSS-CW2
-```
-
-### 2. Install Dependencies
-```bash
 npm install
 ```
 
-### 3. Configure Environment Variables
+**2. Set up the environment file**
 ```bash
 cp .env.example .env
 ```
-Edit `.env` with your PostgreSQL credentials and generate strong secrets:
-- `DB_USER` / `DB_PASS` / `DB_NAME` — your PostgreSQL connection details
-- `SESSION_SECRET` — a long random string (min 64 chars)
-- `PEPPER` — a secret string for password peppering (min 32 chars)
-- `ENCRYPTION_KEY` — exactly 64 hex characters (32 bytes for AES-256)
-- `CSRF_SECRET` — a random string for CSRF token generation
 
-> **Important:** Never commit the `.env` file to version control.
+Open `.env` and fill in:
+- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME` — your Postgres connection
+- `SESSION_SECRET` — long random string, 64+ chars
+- `PEPPER` — secret appended to passwords before hashing, 32+ chars
+- `ENCRYPTION_KEY` — exactly 32 ASCII characters (used as AES-256 key)
 
-### 4. Create the PostgreSQL Database
+Don't commit `.env`. It's in `.gitignore` already.
+
+**3. Create the database and run the schema**
 ```bash
-# Connect to PostgreSQL
-psql -U your_username
-
-# Create the database
-CREATE DATABASE secure_blog;
-
-# Connect to the new database
-\c secure_blog
-
-# Run the schema
-\i db/schema.sql
-
-# Exit
-\q
+psql -U your_username -c "CREATE DATABASE dss_cw2;"
+psql -U your_username -d dss_cw2 -f db/schema.sql
 ```
 
-Or in one command:
+**4. Generate TLS certs for HTTPS (optional but recommended)**
 ```bash
-psql -U your_username -d secure_blog -f db/schema.sql
+openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes
 ```
 
-### 5. Start the Application
+Without certs the server falls back to plain HTTP on localhost. With them you get HTTPS and the HSTS/Secure cookie features work properly.
+
+**5. Start the server**
 ```bash
 npm start
 ```
-The application will be available at **http://localhost:3000**
 
-### 6. Run Unit Tests
-```bash
-npm test
-```
+Runs at `https://localhost:3000` (or `http://` if no certs).
 
-### 7. Run npm Audit
+---
+
+## Running the tests
+
 ```bash
-npm audit
-```
-This checks all dependencies for known security vulnerabilities. Fix any critical or high severity issues with:
-```bash
-npm audit fix
+npm test          # Jest unit tests (73 tests across 8 suites)
+npm audit         # Check dependencies for known CVEs
+bash tests/stress-test.sh   # HTTP-level security checks (run with server up)
 ```
 
 ---
 
-## Project Structure
+## Project layout
 
 ```
-/
-├── server.js                  Entry point — middleware + route wiring
-├── .env                       Environment variables (never commit)
-├── .env.example               Template with placeholder values
-├── README.md                  This file
-├── package.json               Dependencies and scripts
+├── server.js                 Entry point — middleware order matters here
 ├── /routes
-│   ├── auth.js                Register, login, logout, 2FA
-│   ├── posts.js               CRUD + search for blog posts
-│   └── passwordReset.js       Secure password reset flow
+│   ├── auth.js               Register, login, logout, 2FA
+│   ├── posts.js              CRUD + search (IDOR checks on edit/delete)
+│   └── passwordReset.js      Token-based reset flow
 ├── /middleware
-│   ├── sessionCheck.js        Auth guard with idle + absolute timeout
-│   ├── csrfMiddleware.js      CSRF token generation + validation
-│   └── rateLimiter.js         IP-based rate limiting
-├── /db
-│   ├── pool.js                PostgreSQL connection pool
-│   └── schema.sql             All CREATE TABLE statements
+│   ├── csrfMiddleware.js     CSRF token generation + validation
+│   ├── rateLimiter.js        IP-based rate limiting (Map-based, no library)
+│   └── sessionCheck.js       Auth guard + idle/absolute timeout enforcement
 ├── /utils
-│   ├── crypto.js              AES-256 encryption/decryption helpers
-│   ├── sanitise.js            Input validation + HTML encoding
-│   ├── totp.js                TOTP 2FA helpers (generate, verify, QR)
-│   └── logger.js              Security event logging (winston)
-├── /public
-│   ├── index.html             Single-page HTML application
-│   ├── /css/style.css         Stylesheet
-│   └── /js/app.js             Client-side logic
-├── /logs
-│   └── security.log           Auto-generated security event log
-└── /tests
-    ├── /unit
-    │   ├── password.test.js   Password hashing tests
-    │   ├── csrf.test.js       CSRF token tests
-    │   ├── sanitise.test.js   Input sanitisation tests
-    │   ├── totp.test.js       TOTP validation tests
-    │   └── session.test.js    Session expiry tests
-    ├── security-test-plan.md  Manual security test cases
-    └── think-aloud-plan.md    Usability test plan
+│   ├── crypto.js             AES-256-GCM encrypt/decrypt + token hashing
+│   ├── hashing.js            Argon2id hash + verify (with pepper)
+│   ├── sanitise.js           Input validation and HTML encoding
+│   ├── totp.js               TOTP secret generation, QR code, verification
+│   └── logger.js             Security event log (logs/security.log)
+├── /db
+│   ├── pool.js               Postgres connection pool (capped at 20)
+│   └── schema.sql            Table definitions
+├── /public                   Frontend (single HTML page + JS + CSS)
+├── /tests
+│   ├── /unit                 Jest test suites
+│   ├── stress-test.sh        Automated HTTP security checks
+│   └── DSS-CW2-Test-Plan.docx  Manual test plan + evidence
+└── /logs
+    └── security.log          Written at runtime, not committed
 ```
 
 ---
 
-## Security Mitigations Implemented
+## Security controls
 
-### 1. Account Enumeration Prevention
-- Identical generic error messages for wrong username vs wrong password
-- Artificial 200ms delay on all login responses to prevent timing attacks
-- Account lockout after 5 failed attempts (15-minute lockout period)
-- IP-based rate limiting on auth routes (10 attempts per 15 minutes)
+### Password storage
+Argon2id with a per-user salt (embedded in the hash output automatically) plus a server-side pepper from `.env`. Argon2id won the 2015 Password Hashing Competition and is the current OWASP recommendation — it's memory-hard (64 MB per attempt), which makes GPU cracking expensive. Even a full database dump is useless without the pepper.
 
-### 2. Session Hijacking Prevention
-- Session cookies set with `HttpOnly`, `Secure` (in production), and `SameSite=Strict`
-- Session ID regenerated on every successful login
-- Idle timeout: 15 minutes of inactivity
-- Absolute session expiry: 24 hours
-- Server-side session validation on every protected route
-- Sessions stored in PostgreSQL (not in-memory)
+### Encryption at rest
+Email addresses and TOTP secrets are encrypted with AES-256-GCM before going into the database. GCM gives authenticated encryption — the auth tag means tampered ciphertext is detected before decryption. A fresh random IV is generated per encryption call so the same plaintext never produces the same ciphertext. Format stored: `iv_hex:authTag_hex:ciphertext_hex`.
 
-### 3. SQL Injection Prevention
-- Every database query uses parameterised statements (`$1`, `$2`, etc.)
-- No string concatenation of user input into SQL anywhere
-- Server-side input validation on all fields (type, length, format)
+### CSRF protection
+Custom implementation: 32-byte random token stored in the session, required on every POST/PUT/DELETE as `x-csrf-token` header or `_csrf` body field. Comparison uses `crypto.timingSafeEqual` to prevent byte-by-byte timing attacks. Combined with `SameSite=Strict` cookies.
 
-### 4. Cross-Site Scripting (XSS) Prevention
-- All user-supplied content HTML-encoded before rendering (using `he` library)
-- Content Security Policy (CSP) header restricts script sources to `'self'` only
-- No inline scripts allowed
+### Session security
+Sessions stored in Postgres (not memory) via `connect-pg-simple`. Cookie flags: `HttpOnly` (no JS access), `Secure` (HTTPS only), `SameSite=Strict`. Session ID regenerated on login to prevent fixation. Two timeouts enforced server-side: 15-minute idle and 24-hour absolute.
 
-### 5. Cross-Site Request Forgery (CSRF) Prevention
-- Unique per-session CSRF token generated using `crypto.randomBytes()`
-- Token embedded in all forms and sent as `x-csrf-token` header
-- Token validated server-side on every POST, PUT, DELETE request
-- Timing-safe comparison to prevent token timing attacks
-- Combined with `SameSite=Strict` cookies for defence in depth
+### Account enumeration prevention
+Login always returns `"Invalid credentials"` regardless of whether the username exists or the password is wrong. When the user doesn't exist, a dummy Argon2 hash runs anyway to equalise timing. A 200ms floor is applied to all login responses. Account locks after 5 failures for 15 minutes.
 
-### 6. Password Hashing, Salting & Peppering
-- Passwords hashed using bcrypt with 12 rounds
-- Unique per-user salt (automatic in bcrypt)
-- Server-side pepper from environment variable appended before hashing
+### SQL injection
+Every query uses parameterised statements (`$1`, `$2`, ...). No user input is concatenated into SQL strings anywhere. Checked across all routes.
 
-### 7. Database Encryption
-- Email addresses encrypted with AES-256-CBC at the application layer
-- TOTP secrets encrypted before database storage
-- Encryption key stored in `.env` file, never hardcoded
-- Random IV per encryption operation
+### XSS
+All user content is HTML-encoded before being sent in API responses using a custom `encodeHTML()` function (`&`, `<`, `>`, `"`, `'` all escaped). CSP header restricts scripts to `'self'` only — injected `<script>` tags are blocked.
 
-### 8. TOTP Two-Factor Authentication
-- TOTP secret generated on registration with QR code
-- 6-digit code required on every login (after password)
-- Uses `otplib` library (RFC 6238 compliant)
-- TOTP secrets stored encrypted in the database
+### Security headers (Helmet)
+`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Strict-Transport-Security` (1 year), `Referrer-Policy: same-origin`, `Permissions-Policy` (camera/mic/geo denied), CSP `frame-ancestors: 'none'`.
 
-### 9. Additional Security Hardening
-- **Helmet.js security headers**: X-Frame-Options, X-Content-Type-Options, HSTS, Referrer-Policy, Permissions-Policy
-- **Clickjacking protection**: CSP `frame-ancestors 'none'` + `X-Frame-Options: DENY`
-- **IDOR prevention**: Ownership verification on all edit/delete operations
-- **Input length limits**: Server-side enforcement on all fields
-- **Secure password reset**: One-time token, hashed storage, 15-minute expiry
-- **Security logging**: Failed logins, CSRF failures, IDOR attempts logged with timestamp and IP
-- **Generic error messages**: No stack traces or SQL errors exposed to clients
-- **Unhandled rejection handler**: Prevents process crashes from async errors
+### IDOR prevention
+Edit and delete routes fetch the post's `user_id` from the database before making any changes and compare it against `req.session.userId`. Mismatches return 403 and get logged.
+
+### Rate limiting
+Two limiters built with a plain `Map` (no library): 100 req/15 min site-wide, 10 req/15 min on auth routes. The IP limiter and per-account lockout cover different attack shapes.
+
+### Password reset
+Random 32-byte token generated with `crypto.randomBytes()`. Only the SHA-256 hash is stored in the database. Token expires in 15 minutes, is single-use, and requesting a new one invalidates any outstanding tokens. (Token is returned in the API response for demo purposes — would be emailed in production.)
+
+### Error handling
+Global error handler returns only a generic message and a random `requestId` to the client. Full stack traces are logged server-side tagged with the same ID. No file paths, library versions, or database details leak to the response.
 
 ---
 
-## Usage Guide
+## Known limitations
 
-### Registration
-1. Click **Register** in the navigation
-2. Enter a username (3–50 chars, alphanumeric + underscores), email, and password (min 8 chars with uppercase, lowercase, number, and special character)
-3. After registration, scan the QR code with your authenticator app
-4. Enter the 6-digit code to verify and enable 2FA
-
-### Login
-1. Click **Login** and enter your credentials
-2. If 2FA is enabled, enter the 6-digit code from your authenticator app
-3. You will be redirected to the homepage
-
-### Blog Posts
-- **Create**: Click "New Post" to write and publish
-- **Edit/Delete**: Go to "My Posts" to manage your own posts
-- **Search**: Use the search feature to find posts by keyword
-
-### Password Reset
-1. Click "Forgot password?" on the login page
-2. Enter your username to receive a reset token
-3. Enter the token and your new password to complete the reset
-
----
-
-## License
-This project was created for the DSS coursework assessment.
+- Password reset token is returned in the API response rather than sent by email (email sending is out of scope for the coursework).
+- `scriptSrcAttr` in the CSP still allows `unsafe-inline` because the frontend uses `onclick`/`onsubmit` attributes. Fixing this would require refactoring the frontend to use `addEventListener()`.
+- Rate limiter state is in-memory and resets on server restart. A Redis-backed limiter would be needed in production.
