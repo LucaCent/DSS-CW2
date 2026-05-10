@@ -74,12 +74,33 @@
             <input type="password" id="login-password" name="password" maxlength="128"
                    required autocomplete="current-password">
           </div>
-          <div class="form-group" id="totp-group" style="display:none;">
-            <label for="login-totp">2FA Code</label>
-            <input type="text" id="login-totp" name="totpCode" maxlength="6"
-                   pattern="[0-9]{6}" placeholder="6-digit code from authenticator app"
-                   autocomplete="one-time-code">
-            <small class="field-hint">Enter the 6-digit code from your authenticator app (e.g. Google Authenticator)</small>
+          <div id="totp-group" style="display:none;">
+            <div class="form-group">
+              <label for="login-totp">2FA Code</label>
+              <input type="text" id="login-totp" name="totpCode" maxlength="6"
+                     pattern="[0-9]{6}" placeholder="6-digit code from authenticator app"
+                     autocomplete="one-time-code">
+              <small class="field-hint">Enter the code from your authenticator app &mdash; or <a href="#" onclick="toggleRecoveryMode(); return false;">use a recovery code</a></small>
+            </div>
+          </div>
+          <div id="recovery-group" style="display:none;">
+            <div class="form-group">
+              <label for="login-recovery">Recovery Code</label>
+              <input type="text" id="login-recovery" name="recoveryCode" maxlength="20"
+                     placeholder="Paste one of your saved recovery codes">
+              <small class="field-hint"><a href="#" onclick="toggleRecoveryMode(); return false;">Use authenticator app instead</a></small>
+            </div>
+          </div>
+          <div id="captcha-login-group" style="display:none;">
+            <div class="form-group">
+              <label>Verify you&rsquo;re human</label>
+              <div class="captcha-container">
+                <div id="login-captcha-image"></div>
+                <button type="button" class="btn btn-secondary btn-small" onclick="loadLoginCaptcha()">Refresh</button>
+              </div>
+              <input type="text" id="login-captcha-code" maxlength="10"
+                     placeholder="Enter the text shown above" autocomplete="off">
+            </div>
           </div>
           <button type="submit" class="btn btn-primary" id="login-btn">Login</button>
         </form>
@@ -115,6 +136,29 @@
                    required autocomplete="new-password">
             <small class="field-hint">Min 8 chars: uppercase, lowercase, number, and special character required</small>
           </div>
+          <div class="form-group">
+            <label>Two-factor authentication</label>
+            <div class="radio-group">
+              <label class="radio-option">
+                <input type="radio" name="authMethod" value="totp" checked onchange="toggleAuthMethod('totp')">
+                Authenticator app &mdash; more secure, needs an app like Google Authenticator
+              </label>
+              <label class="radio-option">
+                <input type="radio" name="authMethod" value="captcha" onchange="toggleAuthMethod('captcha')">
+                CAPTCHA &mdash; no app needed, just solve a puzzle each login
+              </label>
+            </div>
+            <small id="auth-method-hint" class="field-hint">You will need your authenticator app every time you log in.</small>
+          </div>
+          <div class="form-group">
+            <label>Prove you&rsquo;re not a bot</label>
+            <div class="captcha-container">
+              <div id="reg-captcha-image"></div>
+              <button type="button" class="btn btn-secondary btn-small" onclick="loadRegisterCaptcha()">Refresh</button>
+            </div>
+            <input type="text" id="reg-captcha-code" maxlength="10" required
+                   placeholder="Enter the text shown above" autocomplete="off">
+          </div>
           <button type="submit" class="btn btn-primary">Register</button>
         </form>
         <p class="form-footer">
@@ -147,6 +191,12 @@
           </div>
           <button type="submit" class="btn btn-primary">Verify &amp; Enable 2FA</button>
         </form>
+        <div id="recovery-codes-display" style="display:none;" class="instructions">
+          <h3>Save Your Recovery Codes</h3>
+          <p><strong>Store these somewhere safe &mdash; you won&rsquo;t see them again.</strong> If you lose access to your authenticator app, one of these codes is the only way back in. Each code can only be used once.</p>
+          <div id="recovery-codes-list" class="code-grid"></div>
+          <button class="btn btn-primary" onclick="navigate('login')">I&rsquo;ve saved my codes &mdash; go to login</button>
+        </div>
       </div>
     </section>
 

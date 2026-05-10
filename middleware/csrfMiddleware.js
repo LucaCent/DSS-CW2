@@ -56,6 +56,12 @@ function validateCSRF(req, res, next) {
     return res.status(403).json({ error: 'Invalid security token. Please refresh the page and try again.' });
   }
 
+  // Token verified — rotate it so the same token can't be replayed on the
+  // next request. Client should read X-New-CSRF-Token from every response
+  // and replace its stored copy.
+  const rotated = generateCSRFToken(req);
+  res.setHeader('X-New-CSRF-Token', rotated);
+
   next();
 }
 

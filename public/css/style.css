@@ -415,6 +415,74 @@ body {
   margin-right: 0.35rem;
 }
 
+/* --- CAPTCHA --- */
+.captcha-container {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+}
+
+.captcha-container svg {
+  border-radius: 4px;
+  max-height: 60px;
+  width: auto;
+}
+
+.btn-small {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.82rem;
+}
+
+/* --- Auth method radio group --- */
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.radio-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text);
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.radio-option input[type="radio"] {
+  margin-top: 0.2rem;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+}
+
+/* --- Recovery codes grid --- */
+.code-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.5rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.code-grid code {
+  display: block;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.82rem;
+  letter-spacing: 0.05em;
+  text-align: center;
+  color: var(--text);
+  font-family: monospace;
+}
+
 /* --- Responsive --- */
 @media (max-width: 600px) {
   .nav-container {

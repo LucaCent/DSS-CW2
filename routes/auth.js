@@ -6,6 +6,8 @@
 
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
+const svgCaptcha = require('svg-captcha');
 const { hashPassword, verifyPassword } = require('../utils/hashing');
 const pool = require('../db/pool');
 const { encrypt, decrypt } = require('../utils/crypto');
@@ -24,11 +26,37 @@ const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 // and the pepper means a DB dump alone isn't enough to crack anything.
 
 // ─────────────────────────────────────────────────────────────
+// GET /auth/captcha — generate a fresh CAPTCHA image
+// Stores the answer in the session; client displays the SVG.
+// ─────────────────────────────────────────────────────────────
+router.get('/captcha', (req, res) => {
+  const captcha = svgCaptcha.create({
+    size: 5,
+    noise: 2,
+    color: true,
+    background: '#fdf6ee',
+  });
+  req.session.captchaText = captcha.text;
+  res.type('svg');
+  res.send(captcha.data);
+});
+
+// ─────────────────────────────────────────────────────────────
 // POST /auth/register
 // ─────────────────────────────────────────────────────────────
 router.post('/register', async (req, res) => {
   try {
-    const { username, email, password } = req.body;
+    const { username, email, password, authMethod, captchaCode } = req.body;
+
+    // Verify CAPTCHA first — stops bots before we do any DB work
+    if (!captchaCode || !req.session.captchaText ||
+        captchaCode.toLowerCase() !== req.session.captchaText.toLowerCase()) {
+      req.session.captchaText = null;
+      return res.status(400).json({ error: 'Incorrect CAPTCHA. Please try again.' });
+    }
+    req.session.captchaText = null; // single-use
+
+    const method = authMethod === 'captcha' ? 'captcha' : 'totp';
 
     // Validate everything server-side before touching the DB
     const usernameCheck = validateUsername(username);
@@ -50,30 +78,45 @@ router.post('/register', async (req, res) => {
     }
 
     const passwordHash = await hashPassword(password);
-
-    // Encrypt PII before it goes into the database
     const encryptedEmail = encrypt(email);
 
+    if (method === 'captcha') {
+      // CAPTCHA 2FA users don't need an authenticator app
+      const result = await pool.query(
+        `INSERT INTO users (username, email_encrypted, password_hash, totp_enabled, auth_method)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id`,
+        [username, encryptedEmail, passwordHash, false, 'captcha']
+      );
+      logger.info('New user registered (captcha 2FA)', { username, ip: req.ip });
+      return res.status(201).json({
+        message: 'Registration successful. You can now log in.',
+        userId: result.rows[0].id,
+        authMethod: 'captcha',
+      });
+    }
+
+    // TOTP path — generate secret and QR code
     const totpSecret = generateTOTPSecret();
     const encryptedTotpSecret = encrypt(totpSecret);
 
     const result = await pool.query(
-      `INSERT INTO users (username, email_encrypted, password_hash, totp_secret_encrypted, totp_enabled)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO users (username, email_encrypted, password_hash, totp_secret_encrypted, totp_enabled, auth_method)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id`,
-      [username, encryptedEmail, passwordHash, encryptedTotpSecret, false]
+      [username, encryptedEmail, passwordHash, encryptedTotpSecret, false, 'totp']
     );
 
-    // Generate QR code for 2FA setup
     const qrCodeDataUrl = await generateQRCode(username, totpSecret);
 
-    logger.info('New user registered', { username, ip: req.ip });
+    logger.info('New user registered (TOTP 2FA)', { username, ip: req.ip });
 
     res.status(201).json({
       message: 'Registration successful. Please scan the QR code with your authenticator app to enable 2FA.',
       qrCode: qrCodeDataUrl,
-      totpSecret: totpSecret, // Show once so user can manually enter if QR fails
+      totpSecret: totpSecret,
       userId: result.rows[0].id,
+      authMethod: 'totp',
     });
   } catch (err) {
     console.error('Registration error:', err.message);
@@ -111,13 +154,25 @@ router.post('/enable-2fa', async (req, res) => {
       return res.status(400).json({ error: 'Invalid TOTP code. Please try again with a fresh code from your authenticator app.' });
     }
 
-    // Enable 2FA
+    // Generate 8 one-time recovery codes. We only store the SHA-256 hashes —
+    // the plain codes are shown to the user once and never saved.
+    const plainCodes = [];
+    const hashedCodes = [];
+    for (let i = 0; i < 8; i++) {
+      const code = crypto.randomBytes(10).toString('hex'); // 20-char hex string
+      plainCodes.push(code);
+      hashedCodes.push(crypto.createHash('sha256').update(code).digest('hex'));
+    }
+
     await pool.query(
-      'UPDATE users SET totp_enabled = TRUE WHERE id = $1',
-      [userId]
+      'UPDATE users SET totp_enabled = TRUE, recovery_codes = $1 WHERE id = $2',
+      [JSON.stringify(hashedCodes), userId]
     );
 
-    res.json({ message: '2FA has been successfully enabled on your account.' });
+    res.json({
+      message: '2FA has been successfully enabled on your account.',
+      recoveryCodes: plainCodes, // shown once — user must save these
+    });
   } catch (err) {
     console.error('2FA enable error:', err.message);
     res.status(500).json({ error: 'An error occurred. Please try again.' });
@@ -157,7 +212,7 @@ router.post('/login', async (req, res) => {
     }
 
     const result = await pool.query(
-      'SELECT id, username, password_hash, totp_enabled, totp_secret_encrypted, failed_login_attempts, locked_until FROM users WHERE username = $1',
+      'SELECT id, username, password_hash, totp_enabled, totp_secret_encrypted, auth_method, recovery_codes, failed_login_attempts, locked_until FROM users WHERE username = $1',
       [username]
     );
 
@@ -201,23 +256,64 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    if (user.totp_enabled) {
-      if (!totpCode) {
+    // Second factor check — which method this user enrolled with
+    if (user.auth_method === 'captcha') {
+      const { captchaCode } = req.body;
+      if (!captchaCode) {
+        await artificialDelay(start, ARTIFICIAL_DELAY_MS);
+        return res.status(200).json({ requiresCaptcha: true, message: 'Please solve the CAPTCHA to continue' });
+      }
+      if (!req.session.captchaText ||
+          captchaCode.toLowerCase() !== req.session.captchaText.toLowerCase()) {
+        req.session.captchaText = null;
+        await artificialDelay(start, ARTIFICIAL_DELAY_MS);
+        logger.security('Failed login - wrong CAPTCHA', { username, ip: req.ip });
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      req.session.captchaText = null; // single-use
+
+    } else if (user.totp_enabled) {
+      const { totpCode, recoveryCode } = req.body;
+
+      if (!totpCode && !recoveryCode) {
         await artificialDelay(start, ARTIFICIAL_DELAY_MS);
         return res.status(200).json({ requires2FA: true, message: 'Please enter your 2FA code' });
       }
 
-      const codeCheck = validateLength('totpCode', totpCode);
-      if (!codeCheck.valid) {
-        await artificialDelay(start, ARTIFICIAL_DELAY_MS);
-        return res.status(401).json({ error: 'Invalid credentials' });
-      }
+      if (recoveryCode) {
+        // Recovery code path — hash it and look for a match in stored hashes
+        if (!user.recovery_codes) {
+          await artificialDelay(start, ARTIFICIAL_DELAY_MS);
+          logger.security('Failed login - no recovery codes on account', { username, ip: req.ip });
+          return res.status(401).json({ error: 'Invalid credentials' });
+        }
+        const stored = JSON.parse(user.recovery_codes);
+        const submitted = crypto.createHash('sha256').update(recoveryCode).digest('hex');
+        const idx = stored.indexOf(submitted);
+        if (idx === -1) {
+          await artificialDelay(start, ARTIFICIAL_DELAY_MS);
+          logger.security('Failed login - invalid recovery code', { username, ip: req.ip });
+          return res.status(401).json({ error: 'Invalid credentials' });
+        }
+        // Valid — burn the code so it can't be reused
+        stored.splice(idx, 1);
+        await pool.query('UPDATE users SET recovery_codes = $1 WHERE id = $2',
+          [JSON.stringify(stored), user.id]);
+        logger.security('Recovery code used', { username, ip: req.ip, codesLeft: stored.length });
 
-      const totpSecret = decrypt(user.totp_secret_encrypted);
-      if (!verifyTOTP(totpCode, totpSecret)) {
-        await artificialDelay(start, ARTIFICIAL_DELAY_MS);
-        logger.security('Failed login - invalid TOTP code', { username, ip: req.ip });
-        return res.status(401).json({ error: 'Invalid credentials' });
+      } else {
+        // TOTP path
+        const codeCheck = validateLength('totpCode', totpCode);
+        if (!codeCheck.valid) {
+          await artificialDelay(start, ARTIFICIAL_DELAY_MS);
+          return res.status(401).json({ error: 'Invalid credentials' });
+        }
+        const totpSecret = decrypt(user.totp_secret_encrypted);
+        if (!verifyTOTP(totpCode, totpSecret)) {
+          await artificialDelay(start, ARTIFICIAL_DELAY_MS);
+          logger.security('Failed login - invalid TOTP code', { username, ip: req.ip });
+          return res.status(401).json({ error: 'Invalid credentials' });
+        }
       }
     }
 

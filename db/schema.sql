@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,             -- Argon2id hash (includes salt, params embedded)
   totp_secret_encrypted TEXT,              -- AES-256 encrypted TOTP secret
   totp_enabled BOOLEAN DEFAULT FALSE,
+  auth_method VARCHAR(10) DEFAULT 'totp' NOT NULL,  -- 'totp' or 'captcha'
+  recovery_codes TEXT,                              -- JSON array of SHA-256 hashed backup codes
   failed_login_attempts INTEGER DEFAULT 0,
   locked_until TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

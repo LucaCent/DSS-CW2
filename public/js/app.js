@@ -1,13 +1,9 @@
-/**
- * ============================================================
- * THE SURVIVOR NETWORK — Client-Side Application Logic
- * ============================================================
- * This file handles navigation, form submissions, and API calls.
- * All state-changing requests include the CSRF token.
- * Client-side validation provides immediate feedback but is
- * always backed by server-side validation.
- * ============================================================
- */
+// Client-side app for The Survivor Network.
+// Handles navigation between SPA pages, form submissions, and API calls.
+// Every state-changing request attaches the CSRF token, and the rotated
+// token from X-New-CSRF-Token is picked up after each response.
+// Client-side validation gives quick feedback but the server re-validates
+// everything independently — client checks can always be bypassed.
 
 // ── State ────────────────────────────────────────────────────
 let csrfToken = null;
@@ -99,6 +95,9 @@ function navigate(page) {
       document.getElementById('create-post-form').reset();
       document.getElementById('content-count').textContent = '0';
       break;
+    case 'register':
+      loadRegisterCaptcha();
+      break;
     case 'search':
       document.getElementById('search-results').innerHTML = '';
       document.getElementById('no-search-results').style.display = 'none';
@@ -125,11 +124,68 @@ async function apiCall(url, method = 'GET', body = null) {
   const res = await fetch(url, options);
   const data = await res.json();
 
+  // Pick up rotated CSRF token if the server sent one
+  const rotated = res.headers.get('X-New-CSRF-Token');
+  if (rotated) csrfToken = rotated;
+
   if (!res.ok) {
     throw new Error(data.error || 'An error occurred');
   }
 
   return data;
+}
+
+// ── CAPTCHA loaders ──────────────────────────────────────────
+async function loadRegisterCaptcha() {
+  try {
+    const res = await fetch('/auth/captcha');
+    const svg = await res.text();
+    document.getElementById('reg-captcha-image').innerHTML = svg;
+    document.getElementById('reg-captcha-code').value = '';
+  } catch (err) {
+    console.error('Failed to load register CAPTCHA');
+  }
+}
+
+async function loadLoginCaptcha() {
+  try {
+    const res = await fetch('/auth/captcha');
+    const svg = await res.text();
+    document.getElementById('login-captcha-image').innerHTML = svg;
+    document.getElementById('login-captcha-code').value = '';
+  } catch (err) {
+    console.error('Failed to load login CAPTCHA');
+  }
+}
+
+// ── Auth method toggle (register form) ───────────────────────
+function toggleAuthMethod(method) {
+  // Update the hint below the radio group so the user knows what they're
+  // signing up for before they submit.
+  const hint = document.getElementById('auth-method-hint');
+  if (!hint) return;
+  if (method === 'captcha') {
+    hint.textContent = 'You will solve a CAPTCHA puzzle each time you log in — no app needed.';
+  } else {
+    hint.textContent = 'You will need your authenticator app every time you log in.';
+  }
+}
+
+// ── Recovery code toggle (login form) ────────────────────────
+function toggleRecoveryMode() {
+  const totpGroup = document.getElementById('totp-group');
+  const recoveryGroup = document.getElementById('recovery-group');
+  const inRecoveryMode = recoveryGroup.style.display !== 'none';
+
+  if (inRecoveryMode) {
+    recoveryGroup.style.display = 'none';
+    totpGroup.style.display = 'block';
+    document.getElementById('login-totp').focus();
+  } else {
+    totpGroup.style.display = 'none';
+    recoveryGroup.style.display = 'block';
+    document.getElementById('login-recovery').focus();
+  }
 }
 
 // ── Registration ─────────────────────────────────────────────
@@ -141,8 +197,9 @@ async function handleRegister(event) {
   const username = document.getElementById('reg-username').value.trim();
   const email = document.getElementById('reg-email').value.trim();
   const password = document.getElementById('reg-password').value;
+  const captchaCode = document.getElementById('reg-captcha-code').value.trim();
+  const authMethod = document.querySelector('input[name="authMethod"]:checked').value;
 
-  // Client-side validation
   if (username.length < 3 || username.length > 50) {
     showError(errorEl, 'Username must be 3–50 characters');
     return;
@@ -155,17 +212,29 @@ async function handleRegister(event) {
     showError(errorEl, 'Password must be at least 8 characters');
     return;
   }
+  if (!captchaCode) {
+    showError(errorEl, 'Please complete the CAPTCHA');
+    return;
+  }
 
   try {
-    const data = await apiCall('/auth/register', 'POST', { username, email, password });
+    const data = await apiCall('/auth/register', 'POST', { username, email, password, authMethod, captchaCode });
 
-    // Show 2FA setup page
+    if (data.authMethod === 'captcha') {
+      // CAPTCHA users skip the authenticator setup — go straight to login
+      alert('Registration successful! You can now log in.');
+      navigate('login');
+      return;
+    }
+
+    // TOTP path — show QR code and setup form
     document.getElementById('qr-code-container').innerHTML = `<img src="${data.qrCode}" alt="2FA QR Code">`;
     document.getElementById('totp-manual-key').textContent = data.totpSecret;
     document.getElementById('2fa-user-id').value = data.userId;
 
     navigate('2fa-setup');
   } catch (err) {
+    loadRegisterCaptcha(); // refresh CAPTCHA on any error
     showError(errorEl, err.message);
   }
 }
@@ -185,9 +254,17 @@ async function handleEnable2FA(event) {
   }
 
   try {
-    await apiCall('/auth/enable-2fa', 'POST', { userId: parseInt(userId), totpCode });
-    alert('2FA set up successfully! You can now log in to the community.');
-    navigate('login');
+    const data = await apiCall('/auth/enable-2fa', 'POST', { userId: parseInt(userId), totpCode });
+
+    if (data.recoveryCodes && data.recoveryCodes.length > 0) {
+      // Hide the setup form and show the recovery codes
+      document.getElementById('enable-2fa-form').style.display = 'none';
+      const codesEl = document.getElementById('recovery-codes-list');
+      codesEl.innerHTML = data.recoveryCodes.map(c => `<code>${c}</code>`).join('');
+      document.getElementById('recovery-codes-display').style.display = 'block';
+    } else {
+      navigate('login');
+    }
   } catch (err) {
     showError(errorEl, err.message);
   }
@@ -204,6 +281,8 @@ async function handleLogin(event) {
   const username = document.getElementById('login-username').value.trim();
   const password = document.getElementById('login-password').value;
   const totpCode = document.getElementById('login-totp').value.trim();
+  const recoveryCode = document.getElementById('login-recovery').value.trim();
+  const captchaCode = document.getElementById('login-captcha-code').value.trim();
 
   if (!username || !password) {
     showError(errorEl, 'Username and password are required');
@@ -213,14 +292,23 @@ async function handleLogin(event) {
   try {
     const body = { username, password };
     if (totpCode) body.totpCode = totpCode;
+    if (recoveryCode) body.recoveryCode = recoveryCode;
+    if (captchaCode) body.captchaCode = captchaCode;
 
     const data = await apiCall('/auth/login', 'POST', body);
 
     if (data.requires2FA) {
-      // Show 2FA input
       document.getElementById('totp-group').style.display = 'block';
-      showInfo(infoEl, 'Please enter the 6-digit code from your authenticator app');
+      document.getElementById('recovery-group').style.display = 'none';
+      showInfo(infoEl, 'Enter the 6-digit code from your authenticator app, or use a recovery code');
       document.getElementById('login-totp').focus();
+      return;
+    }
+
+    if (data.requiresCaptcha) {
+      document.getElementById('captcha-login-group').style.display = 'block';
+      await loadLoginCaptcha();
+      showInfo(infoEl, 'Please solve the CAPTCHA to complete your login');
       return;
     }
 
@@ -231,6 +319,10 @@ async function handleLogin(event) {
     await checkAuth();
     navigate('home');
   } catch (err) {
+    // Refresh CAPTCHA if it was being used so they can try again
+    if (document.getElementById('captcha-login-group').style.display !== 'none') {
+      loadLoginCaptcha();
+    }
     showError(errorEl, err.message);
   }
 }
