@@ -6,3 +6,7 @@ logs/
 key.pem
 cert.pem
 pg_hba.conf
+cookies.txt
+body.json
+.postman/resources.yaml
+postman/globals/workspace.globals.yaml
