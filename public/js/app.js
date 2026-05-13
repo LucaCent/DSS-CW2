@@ -165,7 +165,7 @@ function toggleAuthMethod(method) {
   const hint = document.getElementById('auth-method-hint');
   if (!hint) return;
   if (method === 'captcha') {
-    hint.textContent = 'You will solve a CAPTCHA puzzle each time you log in — no app needed.';
+    hint.textContent = 'You will solve a CAPTCHA puzzle each time you log in. No app needed.';
   } else {
     hint.textContent = 'You will need your authenticator app every time you log in.';
   }
