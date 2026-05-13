@@ -230,7 +230,7 @@ router.post('/login', async (req, res) => {
     if (user.locked_until && new Date(user.locked_until) > new Date()) {
       await artificialDelay(start, ARTIFICIAL_DELAY_MS);
       logger.security('Login attempt on locked account', { username, ip: req.ip });
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: 'Account temporarily locked due to too many failed attempts. Please try again in 15 minutes.' });
     }
 
     const passwordValid = await verifyPassword(user.password_hash, password);
