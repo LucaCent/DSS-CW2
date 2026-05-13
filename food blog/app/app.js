@@ -35,45 +35,13 @@ app.post('/',function(req, res){
     var username = req.body.username_input;
     var password = req.body.password_input;
 
-    // Currently only "username" is a valid username
-    if(username !== "username") {
-
-        // Update login_attempt with credentials used to log in
-        let login_attempt = {"username" : username, "password" : password};
-        let data = JSON.stringify(login_attempt);
-        fs.writeFileSync(__dirname + '/public/json/login_attempt.json', data);
-
-        // Redirect back to login page
-        res.sendFile(__dirname + '/public/html/login.html', (err) => {
-            if (err){
-                console.log(err);
-            }
-        });
-    }
-
-    // Currently only "password" is a valid password
-    if(password !== "password") {
-
-        // Update login_attempt with credentials used to log in
-        let login_attempt = {"username" : username, "password" : password};
-        let data = JSON.stringify(login_attempt);
-        fs.writeFileSync(__dirname + '/public/json/login_attempt.json', data);
-
-        // Redirect back to login page
-        res.sendFile(__dirname + '/public/html/login.html', (err) => {
-            if (err){
-                console.log(err);
-            }
-        });
-    }
+    // Update login_attempt with credentials used to log in
+    let login_attempt = {"username" : username, "password" : password};
+    let data = JSON.stringify(login_attempt);
+    fs.writeFileSync(__dirname + '/public/json/login_attempt.json', data);
 
     // Valid username and password both entered together
     if(username === "username" && password === "password") {
-        // Update login_attempt with credentials
-        let login_attempt = {"username" : username, "password" : password};
-        let data = JSON.stringify(login_attempt);
-        fs.writeFileSync(__dirname + '/public/json/login_attempt.json', data);
-
         // Update current user upon successful login
         currentUser = req.body.username_input;
 
@@ -82,7 +50,14 @@ app.post('/',function(req, res){
             if (err){
                 console.log(err);
             }
-        })
+        });
+    } else {
+        // Redirect back to login page
+        res.sendFile(__dirname + '/public/html/login.html', (err) => {
+            if (err){
+                console.log(err);
+            }
+        });
     }
 });
 
@@ -112,7 +87,7 @@ app.post('/makepost', function(req, res) {
     if(req.body.postId == "") {
         newId = maxId + 1;
     } else { // If postID != empty, user is editing a post
-        newId = req.body.postId;
+        newId = parseInt(req.body.postId);
 
         // Find post with the matching ID, delete it from posts so user can submit their new version
         let index = posts.findIndex(item => item.postId == newId);
