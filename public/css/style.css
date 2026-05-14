@@ -1,9 +1,3 @@
-/* ============================================================
-   THE SURVIVOR NETWORK — Stylesheet
-   Warm, compassionate design for a cancer survivor community
-   ============================================================ */
-
-/* --- Reset & Base --- */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -97,7 +91,7 @@ body {
   padding: 0.4rem 0.6rem;
 }
 
-/* --- Container --- */
+/*Container*/
 .container {
   max-width: 900px;
   margin: 2rem auto;
@@ -105,7 +99,7 @@ body {
   flex: 1;
 }
 
-/* Warm hero tagline shown on the home page */
+/* Home page */
 .hero-tagline {
   background: var(--gold-light);
   border-left: 4px solid var(--gold);
@@ -117,7 +111,7 @@ body {
   line-height: 1.7;
 }
 
-/* --- Page Sections --- */
+/* Page Sections */
 .page { animation: fadeIn 0.2s ease; }
 
 @keyframes fadeIn {
@@ -125,7 +119,7 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* --- Cards / Forms --- */
+/*Forms*/
 .form-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -184,7 +178,7 @@ body {
   margin-top: 0.25rem;
 }
 
-/* --- Buttons --- */
+/* Buttons */
 .btn {
   display: inline-block;
   padding: 0.65rem 1.5rem;
@@ -223,7 +217,7 @@ body {
   font-size: 0.85rem;
 }
 
-/* --- Alerts --- */
+/* Alerts */
 .alert {
   padding: 0.75rem 1rem;
   border-radius: var(--radius);
@@ -249,7 +243,7 @@ body {
   border: 1px solid #bfdbfe;
 }
 
-/* --- Posts Grid --- */
+/* Posts Grid*/
 .posts-grid {
   display: grid;
   gap: 1.25rem;
@@ -302,7 +296,7 @@ body {
   font-style: italic;
 }
 
-/* --- QR Code / 2FA --- */
+/* QR Code / 2FA */
 .qr-container {
   text-align: center;
   margin: 1.5rem 0;
@@ -349,7 +343,7 @@ body {
   margin: 0.75rem 0;
 }
 
-/* --- Modal --- */
+/* Modal */
 .modal {
   position: fixed;
   top: 0;
@@ -382,7 +376,7 @@ body {
   gap: 0.5rem;
 }
 
-/* --- Form Footer --- */
+/* Form Footer */
 .form-footer {
   text-align: center;
   margin-top: 1.25rem;
@@ -398,7 +392,7 @@ body {
 
 .form-footer a:hover { text-decoration: underline; }
 
-/* --- Footer --- */
+/* Footer*/
 .footer {
   text-align: center;
   padding: 1.5rem;
@@ -415,7 +409,7 @@ body {
   margin-right: 0.35rem;
 }
 
-/* --- CAPTCHA --- */
+/* CAPTCHA */
 .captcha-container {
   display: flex;
   align-items: center;
@@ -438,7 +432,7 @@ body {
   font-size: 0.82rem;
 }
 
-/* --- Auth method radio group --- */
+/* Auth method */
 .radio-group {
   display: flex;
   flex-direction: column;
@@ -462,7 +456,7 @@ body {
   flex-shrink: 0;
 }
 
-/* --- Recovery codes grid --- */
+/* Recovery codes */
 .code-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -483,7 +477,7 @@ body {
   font-family: monospace;
 }
 
-/* --- Responsive --- */
+/* Responsive */
 @media (max-width: 600px) {
   .nav-container {
     flex-direction: column;

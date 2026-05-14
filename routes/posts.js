@@ -40,9 +40,9 @@ router.get('/', async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────
+
 // GET /posts/search?q=keyword — Search posts by keyword
-// ─────────────────────────────────────────────────────────────
+
 router.get('/search', async (req, res) => {
   try {
     const { q } = req.query;
@@ -81,9 +81,9 @@ router.get('/search', async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────
+
 // GET /posts/:id — Get a single post
-// ─────────────────────────────────────────────────────────────
+
 router.get('/:id', async (req, res) => {
   try {
     const postId = parseInt(req.params.id, 10);
@@ -119,9 +119,9 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────
+
 // POST /posts — Create a new post (auth required)
-// ─────────────────────────────────────────────────────────────
+
 router.post('/', requireAuth, async (req, res) => {
   try {
     const { title, content } = req.body;
@@ -157,9 +157,8 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────
+
 // PUT /posts/:id — Edit a post (auth required, own posts only)
-// ─────────────────────────────────────────────────────────────
 
 // Ownership check before edit — without this, any logged-in user could
 // swap the post ID in the URL and overwrite someone else's post.
@@ -224,9 +223,9 @@ router.put('/:id', requireAuth, async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────
+
 // DELETE /posts/:id — Delete a post (auth required, own posts only)
-// ─────────────────────────────────────────────────────────────
+
 router.delete('/:id', requireAuth, async (req, res) => {
   try {
     const postId = parseInt(req.params.id, 10);

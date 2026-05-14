@@ -25,10 +25,10 @@ const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 // the choice. The short version: it's memory-hard, salt is automatic,
 // and the pepper means a DB dump alone isn't enough to crack anything.
 
-// ─────────────────────────────────────────────────────────────
+
 // GET /auth/captcha — generate a fresh CAPTCHA image
 // Stores the answer in the session; client displays the SVG.
-// ─────────────────────────────────────────────────────────────
+
 router.get('/captcha', (req, res) => {
   const captcha = svgCaptcha.create({
     size: 5,
@@ -41,9 +41,9 @@ router.get('/captcha', (req, res) => {
   res.send(captcha.data);
 });
 
-// ─────────────────────────────────────────────────────────────
+
 // POST /auth/register
-// ─────────────────────────────────────────────────────────────
+
 router.post('/register', async (req, res) => {
   try {
     const { username, email, password, authMethod, captchaCode } = req.body;
@@ -124,9 +124,9 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────
+
 // POST /auth/enable-2fa
-// ─────────────────────────────────────────────────────────────
+
 router.post('/enable-2fa', async (req, res) => {
   try {
     const { userId, totpCode } = req.body;
@@ -179,16 +179,15 @@ router.post('/enable-2fa', async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────
+
 // POST /auth/login
-// ─────────────────────────────────────────────────────────────
 
 // Login needs careful handling of timing and error messages. If "user not
 // found" is faster than "wrong password" (no hash to check), an attacker
 // can tell which usernames exist just by measuring response time.
 //
 // To prevent that:
-//   - Run a dummy hash when the user doesn't exist, so both paths take
+//   - We Run a dummy hash when the user doesn't exist, so both paths take
 //     roughly the same time.
 //   - Always respond "Invalid credentials" regardless of what failed.
 //   - Enforce a 200ms response floor either way.

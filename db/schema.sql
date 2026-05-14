@@ -1,6 +1,5 @@
--- Database schema for The Survivor Network (DSS-CW2, Group 15).
--- Sensitive columns (email, totp_secret) store AES-256-GCM ciphertext,
--- not plaintext. All application queries use $1/$2 parameterised statements.
+-- Sensitive columns (email, totp_secret) store AES-256-GCM ciphertext, not plaintext.
+-- All application queries use $1/$2 parameterised statements.
 
 -- Enable pgcrypto extension for gen_random_uuid()
 CREATE EXTENSION IF NOT EXISTS pgcrypto;

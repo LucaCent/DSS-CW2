@@ -32,8 +32,7 @@ const ARGON2_OPTIONS = {
   parallelism: 1,
 };
 
-// Hash a password — returns the full Argon2 hash string (params + salt
-// + hash all in one). Store it as-is in the DB.
+// Hash a password
 async function hashPassword(plaintext) {
   if (typeof plaintext !== 'string' || plaintext.length === 0) {
     throw new Error('Password must be a non-empty string.');
@@ -41,9 +40,7 @@ async function hashPassword(plaintext) {
   return argon2.hash(plaintext + PEPPER, ARGON2_OPTIONS);
 }
 
-// Check a password against a stored hash. Argon2 pulls the salt and
-// params out automatically. Returns false rather than throwing if the
-// hash is malformed — cleaner for the callers.
+// Check a password against a stored hash.
 async function verifyPassword(storedHash, plaintext) {
   if (typeof plaintext !== 'string' || typeof storedHash !== 'string') {
     return false;

@@ -5,12 +5,12 @@
 // Client-side validation gives quick feedback but the server re-validates
 // everything independently — client checks can always be bypassed.
 
-// ── State ────────────────────────────────────────────────────
+// State
 let csrfToken = null;
 let currentUser = null;
 let pendingDeleteId = null;
 
-// ── Initialisation ───────────────────────────────────────────
+// Initialisation
 document.addEventListener('DOMContentLoaded', async () => {
   await fetchCSRFToken();
   await checkAuth();
@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// ── CSRF Token ───────────────────────────────────────────────
+// CSRF Token
 async function fetchCSRFToken() {
   try {
     const res = await fetch('/auth/csrf-token');
@@ -43,7 +43,7 @@ async function fetchCSRFToken() {
   }
 }
 
-// ── Auth Check ───────────────────────────────────────────────
+// Auth Check
 async function checkAuth() {
   try {
     const res = await fetch('/auth/me');
@@ -68,7 +68,7 @@ function updateNavAuth(loggedIn) {
   }
 }
 
-// ── Navigation ───────────────────────────────────────────────
+// Navigation
 function navigate(page) {
   // Hide all pages
   document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
@@ -105,7 +105,7 @@ function navigate(page) {
   }
 }
 
-// ── API Helper ───────────────────────────────────────────────
+// API Helper
 async function apiCall(url, method = 'GET', body = null) {
   const options = {
     method,
@@ -135,7 +135,7 @@ async function apiCall(url, method = 'GET', body = null) {
   return data;
 }
 
-// ── CAPTCHA loaders ──────────────────────────────────────────
+// CAPTCHA loaders
 async function loadRegisterCaptcha() {
   try {
     const res = await fetch('/auth/captcha');
@@ -158,7 +158,7 @@ async function loadLoginCaptcha() {
   }
 }
 
-// ── Auth method toggle (register form) ───────────────────────
+// Auth method toggle (register form)
 function toggleAuthMethod(method) {
   // Update the hint below the radio group so the user knows what they're
   // signing up for before they submit.
@@ -171,7 +171,7 @@ function toggleAuthMethod(method) {
   }
 }
 
-// ── Recovery code toggle (login form) ────────────────────────
+// Recovery code toggle (login form)
 function toggleRecoveryMode() {
   const totpGroup = document.getElementById('totp-group');
   const recoveryGroup = document.getElementById('recovery-group');
@@ -188,7 +188,7 @@ function toggleRecoveryMode() {
   }
 }
 
-// ── Registration ─────────────────────────────────────────────
+// Registration
 async function handleRegister(event) {
   event.preventDefault();
   const errorEl = document.getElementById('register-error');
@@ -239,7 +239,7 @@ async function handleRegister(event) {
   }
 }
 
-// ── Enable 2FA ───────────────────────────────────────────────
+// Enable 2FA
 async function handleEnable2FA(event) {
   event.preventDefault();
   const errorEl = document.getElementById('2fa-error');
@@ -270,7 +270,7 @@ async function handleEnable2FA(event) {
   }
 }
 
-// ── Login ────────────────────────────────────────────────────
+// Login
 async function handleLogin(event) {
   event.preventDefault();
   const errorEl = document.getElementById('login-error');
@@ -327,7 +327,7 @@ async function handleLogin(event) {
   }
 }
 
-// ── Logout ───────────────────────────────────────────────────
+// Logout
 async function handleLogout() {
   try {
     await apiCall('/auth/logout', 'POST', {});
@@ -341,7 +341,7 @@ async function handleLogout() {
   navigate('home');
 }
 
-// ── Load Posts (Public) ──────────────────────────────────────
+// Load Posts (Public)
 async function loadPosts() {
   try {
     const data = await apiCall('/posts');
@@ -351,7 +351,7 @@ async function loadPosts() {
   }
 }
 
-// ── Load My Posts ────────────────────────────────────────────
+// Load My Posts
 async function loadMyPosts() {
   try {
     const data = await apiCall('/posts');
@@ -362,7 +362,7 @@ async function loadMyPosts() {
   }
 }
 
-// ── Render Posts ─────────────────────────────────────────────
+// Render Posts
 function renderPosts(posts, containerId, emptyId, showActions) {
   const container = document.getElementById(containerId);
   const emptyEl = document.getElementById(emptyId);
@@ -394,7 +394,7 @@ function renderPosts(posts, containerId, emptyId, showActions) {
   `).join('');
 }
 
-// ── Create Post ──────────────────────────────────────────────
+// Create Post
 async function handleCreatePost(event) {
   event.preventDefault();
   const errorEl = document.getElementById('create-error');
@@ -420,7 +420,7 @@ async function handleCreatePost(event) {
   }
 }
 
-// ── Edit Post ────────────────────────────────────────────────
+// Edit Post
 async function startEditPost(postId) {
   try {
     const data = await apiCall(`/posts/${postId}`);
@@ -461,7 +461,7 @@ async function handleEditPost(event) {
   }
 }
 
-// ── Delete Post ──────────────────────────────────────────────
+// Delete Post
 function confirmDeletePost(postId) {
   pendingDeleteId = postId;
   document.getElementById('delete-modal').style.display = 'flex';
@@ -485,7 +485,7 @@ async function executeDelete() {
   }
 }
 
-// ── Search ───────────────────────────────────────────────────
+// Search
 async function handleSearch(event) {
   event.preventDefault();
   const query = document.getElementById('search-input').value.trim();
@@ -515,7 +515,7 @@ async function handleSearch(event) {
   }
 }
 
-// ── Password Reset Request ───────────────────────────────────
+// Password Reset Request
 async function handleResetRequest(event) {
   event.preventDefault();
   const errorEl = document.getElementById('reset-req-error');
@@ -542,7 +542,7 @@ async function handleResetRequest(event) {
   }
 }
 
-// ── Password Reset Confirm ───────────────────────────────────
+// Password Reset Confirm
 async function handleResetConfirm(event) {
   event.preventDefault();
   const errorEl = document.getElementById('reset-conf-error');
@@ -571,7 +571,7 @@ async function handleResetConfirm(event) {
   }
 }
 
-// ── Helpers ──────────────────────────────────────────────────
+// Helpers
 function showError(el, message) {
   el.textContent = message;
   el.style.display = 'block';

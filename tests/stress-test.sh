@@ -1,5 +1,4 @@
 #!/bin/bash
-# DSS-CW2 Security Stress Test — Group 15
 # Run with server active: node server.js
 # Then in a second tab: bash tests/stress-test.sh
 # Screenshot the output for demo evidence.
@@ -36,12 +35,6 @@ fresh_csrf() {
 
 rm -f "$COOKIES"
 
-echo ""
-echo -e "${bold}═══════════════════════════════════════════════════════${reset}"
-echo -e "${bold}   DSS-CW2 Security Verification  |  Group 15          ${reset}"
-echo -e "${bold}═══════════════════════════════════════════════════════${reset}"
-echo ""
-
 # ── 1. HTTPS & Security Headers ──────────────────────────────────────
 echo -e "${yellow}[1] HTTPS & Security Headers${reset}"
 HEADERS=$(curl -k -s -I "$BASE/" 2>/dev/null)
@@ -77,7 +70,7 @@ echo "$HEADERS" | grep -qi "x-content-type-options: nosniff" \
 
 echo ""
 
-# ── 2. CSRF Protection ───────────────────────────────────────────────
+# 2. CSRF Protection
 echo -e "${yellow}[2] CSRF Protection${reset}"
 
 STATUS=$(curl -k -s -o /dev/null -w "%{http_code}" -X POST "$BASE/auth/login" \
@@ -96,7 +89,7 @@ STATUS=$(curl -k -s -o /dev/null -w "%{http_code}" -X POST "$BASE/auth/register"
 
 echo ""
 
-# ── 3. Account Enumeration Prevention ───────────────────────────────
+# 3. Account Enumeration Prevention
 echo -e "${yellow}[3] Account Enumeration Prevention${reset}"
 
 # Use cookie jar so CSRF token is tied to same session as the login request
@@ -139,7 +132,7 @@ fi
 
 echo ""
 
-# ── 4. SQL Injection Resistance ──────────────────────────────────────
+# 4. SQL Injection Resistance
 echo -e "${yellow}[4] SQL Injection Resistance${reset}"
 
 rm -f "$COOKIES"
@@ -170,7 +163,7 @@ LEAKS_SEARCH=$(echo "$SEARCH_RESP" | grep -i "password_hash\|username\|PostgreSQ
 
 echo ""
 
-# ── 5. Access Control ────────────────────────────────────────────────
+# 5. Access Control
 echo -e "${yellow}[5] Access Control (unauthenticated requests rejected)${reset}"
 
 # Without a valid session, CSRF fires first (403) or auth fires (401) — both mean rejection
@@ -198,7 +191,7 @@ DEL_STATUS=$(curl -k -s -o /dev/null -w "%{http_code}" \
 
 echo ""
 
-# ── 6. Error Handling & Information Disclosure ───────────────────────
+# 6. Error Handling & Information Disclosure
 echo -e "${yellow}[6] Error Handling — No Stack Trace Leakage${reset}"
 
 ERR_RESP=$(curl -k -s "$BASE/some/completely/fake/route/xyz")
@@ -221,7 +214,7 @@ LEAKS_PARSE=$(echo "$BAD_JSON" | grep -i "SyntaxError\|at Object\|node_modules" 
 
 echo ""
 
-# ── 7. Password Strength ─────────────────────────────────────────────
+#7. Password Strength
 echo -e "${yellow}[7] Password Strength Enforcement${reset}"
 
 rm -f "$COOKIES"
@@ -250,23 +243,11 @@ echo ""
 
 rm -f "$COOKIES"
 
-# ── Summary ──────────────────────────────────────────────────────────
-echo -e "${bold}═══════════════════════════════════════════════════════${reset}"
+# Summary
+
 TOTAL=$((PASS + FAIL))
 if [ "$FAIL" = "0" ]; then
   echo -e "${bold}${green}  ALL $TOTAL CHECKS PASSED ✅${reset}"
 else
   echo -e "${bold}  $PASS/$TOTAL passed — ${red}$FAIL FAILED ❌${reset}"
 fi
-echo -e "${bold}═══════════════════════════════════════════════════════${reset}"
-echo ""
-echo "  Screenshot this output and attach to your test plan."
-echo ""
-echo "  Remaining evidence to capture:"
-echo "  1. npm test  →  screenshot 73/73 passing"
-echo "  2. psql: SELECT id, username, email_encrypted FROM users LIMIT 3;"
-echo "     → shows AES ciphertext, not plaintext email"
-echo "  3. psql: SELECT username, password_hash FROM users LIMIT 1;"
-echo "     → shows \$argon2id\$v=19\$m=65536,t=3,p=1..."
-echo "  4. Browser: https://localhost:3000 with padlock icon visible"
-echo ""
