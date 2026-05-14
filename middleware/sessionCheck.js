@@ -30,7 +30,7 @@ function requireAuth(req, res, next) {
     return;
   }
 
-  // No activity for 15 min → session is dead
+  // No activity for 15 min means session is dead
   if (req.session.lastActivity && (now - req.session.lastActivity > IDLE_TIMEOUT_MS)) {
     req.session.destroy((err) => {
       return res.status(401).json({ error: 'Session timed out due to inactivity. Please log in again.' });
