@@ -11,9 +11,8 @@ const { requireAuth } = require('../middleware/sessionCheck');
 const { encodeHTML, validateLength } = require('../utils/sanitise');
 const logger = require('../utils/logger');
 
-// ─────────────────────────────────────────────────────────────
 // GET /posts — Public post listing (no auth required)
-// ─────────────────────────────────────────────────────────────
+
 
 router.get('/', async (req, res) => {
   try {
