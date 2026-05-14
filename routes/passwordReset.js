@@ -1,8 +1,8 @@
 /*
  * Password reset routes.
- * Flow: request → generate random token → store only the SHA-256 hash in
- * the DB (not the token itself) → return plaintext token to user (would
- * be emailed in production) → on confirm, re-hash submitted token and
+ * Flow: request, generate random token, store only the SHA-256 hash in
+ * the DB (not the token itself), return plaintext token to user (would
+ * be emailed in production), on confirm, re-hash submitted token and
  * compare. 15-minute expiry, single-use, and requesting a new token
  * invalidates any outstanding ones.
  *
@@ -21,9 +21,8 @@ const logger = require('../utils/logger');
 
 const TOKEN_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
 
-// ─────────────────────────────────────────────────────────────
 // POST /password-reset/request — Request a password reset
-// ─────────────────────────────────────────────────────────────
+
 router.post('/request', async (req, res) => {
   try {
     const { username } = req.body;
@@ -78,9 +77,9 @@ router.post('/request', async (req, res) => {
   }
 });
 
-// ─────────────────────────────────────────────────────────────
+
 // POST /password-reset/confirm — Confirm password reset with token
-// ─────────────────────────────────────────────────────────────
+
 router.post('/confirm', async (req, res) => {
   try {
     const { token, newPassword } = req.body;
